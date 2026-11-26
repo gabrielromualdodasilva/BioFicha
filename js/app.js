@@ -29,7 +29,7 @@ if (NUVEM) {
   }
 }
 
-const estadoVazio = () => ({ modelo: 2, perfil: null, ficha: null, medidas: [], sessoes: [], sessao: null, analises: [], diario: [], planoDesde: null });
+const estadoVazio = () => ({ modelo: 2, perfil: null, ficha: null, medidas: [], sessoes: [], sessao: null, diario: [], planoDesde: null });
 // Modelo 2 (bioimpedância no padrão Omron): músculo esquelético em % do peso, em vez de massa muscular em kg,
 // gordura abdominal de 1 a 30, e sem água corporal, idade metabólica e massa óssea.
 function migrar(d) {
@@ -119,19 +119,7 @@ function dadosDemo() {
     { data: '2026-11-24', peso: 88.4, gordura: 25.6, visceral: 10, musculo: 35.8, tmb: 1845 }
   ];
   const a = analisar(perfil);
-  const analises = [{
-    data: '2026-11-24', resumo: 'Você perdeu 3,6 kg em três meses e quase tudo veio de gordura: o músculo esquelético subiu de 34,6% para 35,8%. É o cenário ideal para emagrecimento, e o ritmo de 0,3 kg por semana está sustentável.',
-    destaques: [
-      { tipo: 'bom', texto: 'Gordura corporal caiu de 27,5% para 25,6% desde agosto, com queda em todas as medições.' },
-      { tipo: 'bom', texto: 'Músculo esquelético em 35,8%, dentro da faixa normal e subindo.' },
-      { tipo: 'atencao', texto: 'Gordura abdominal ainda no nível 10, no limite da faixa alta. É o número que mais vale acompanhar.' },
-      { tipo: 'info', texto: 'Só 1 treino concluído nos últimos 7 dias, contra 4 planejados.' }
-    ],
-    treino: ['Volte aos 4 treinos na semana: a queda de gordura depende mais da constância do que da carga.', 'Mantenha as cargas atuais nos compostos e suba só quando fechar todas as séries no topo da faixa.'],
-    alimentacao: ['Registre o que comer em pelo menos 5 dias para conferir se a proteína chega perto de 164 g.', 'Troque as calorias líquidas do fim de semana por água ou café sem açúcar.'],
-    meta_semana: 'Concluir os 4 treinos da ficha até domingo.'
-  }];
-  return { modelo: 2, analises, diario: [], planoDesde: '2026-11-10', perfil, ficha: gerarFicha(perfil, a.objetivo), medidas, sessoes: [{ data: '2026-11-23', dia: 'A', titulo: 'Superiores A', feitas: 18, total: 18, minutos: 52 }], sessao: null };
+  return { modelo: 2, diario: [], planoDesde: '2026-10-25', perfil, ficha: gerarFicha(perfil, a.objetivo), medidas, sessoes: [{ data: '2026-11-23', dia: 'A', titulo: 'Superiores A', feitas: 18, total: 18, minutos: 52 }], sessao: null };
 }
 
 /* ───────── Roteamento e moldura ───────── */
@@ -499,7 +487,7 @@ function modalUsuario(uid) {
     const porDia = {}; (u.diario || []).filter(x => x.data > dataMenos(hoje, 7)).forEach(x => { porDia[x.data] = (porDia[x.data] || 0) + (x.kcal || 0); });
     const ds = Object.keys(porDia); return ds.length ? { dias: ds.length, kcal: Math.round(ds.reduce((t, d) => t + porDia[d], 0) / ds.length) } : null;
   })();
-  const analiseIA = (u.analises || []).slice(-1)[0];
+  const semana = analiseDaSemana(u);
   abrirModal(`${topoModal(esc(r.nome || r.email || 'Usuário'))}<div class="miolo solto">
     <p class="suave pequeno">${esc(r.email)}${r.email ? ' · ' : ''}${a.idade} anos · ${n0(a.alturaCm)} cm · objetivo: ${OBJETIVOS[a.objetivo].nome.toLowerCase()} · ${NIVEIS[p.nivel].toLowerCase()} · último uso ${r.atividade}</p>
     <div class="tiles" style="margin-top:14px">
@@ -518,7 +506,7 @@ function modalUsuario(uid) {
       ${(u.sessoes || []).slice(-8).reverse().map(s => `<tr><td>${dataBR(s.data)}</td><td>${esc('Treino ' + s.dia + (s.titulo ? ' · ' + s.titulo : ''))}</td><td>${s.feitas} de ${s.total}</td><td>${s.minutos ? s.minutos + ' min' : '–'}</td></tr>`).join('') || '<tr><td colspan="4" class="suave">Nenhum treino concluído.</td></tr>'}</table></div>
     <h3 style="margin-top:20px">Alimentação</h3>
     <p>Meta de ${n0(pl.kcal)} kcal e ${n0(pl.proteina)} g de proteína${pl.ajustado ? ', reestruturada em ' + dataBR(p.planoAjuste.desde) : ''}. ${diario ? `Nos últimos 7 dias registrou ${diario.dias} ${diario.dias === 1 ? 'dia' : 'dias'}, com média de ${n0(diario.kcal)} kcal.` : 'Sem registros no diário nos últimos 7 dias.'}</p>
-    ${analiseIA ? `<h3 style="margin-top:20px">Última análise de IA · ${dataBR(analiseIA.data)}</h3><p>${esc(analiseIA.resumo)}</p>${analiseIA.meta_semana ? `<div class="meta-semana"><span class="mini">Meta da semana</span><b>${esc(analiseIA.meta_semana)}</b></div>` : ''}` : ''}</div>`);
+    <h3 style="margin-top:20px">Análise da semana</h3><p>${esc(semana.resumo)}</p><div class="meta-semana"><span class="mini">Meta da semana</span><b>${esc(semana.meta)}</b></div></div>`);
 }
 
 // Endereço e texto do convite. O link leva o e-mail e a senha provisória; só existe enquanto a pessoa não criou a própria senha.
@@ -1035,7 +1023,7 @@ function viewAlimentacao() {
     ${grupo('Proteína', 'escolha uma', r.prot)}${grupo('Carboidrato', 'escolha um', r.carb)}${grupo('Gordura boa', 'escolha uma', r.gord)}
     ${r.fixos.length || r.salada ? `<div class="grupo-ali"><div class="tit">Acompanha</div><ul>${r.fixos.map(t => `<li>${esc(t)}</li>`).join('')}${r.salada ? '<li>Salada e legumes à vontade</li>' : ''}</ul></div>` : ''}</div>`;
   return `
-    <div class="cabecalho"><div><h1>Alimentação</h1><p class="suave">Plano para ${OBJETIVOS[pl.objetivo].nome.toLowerCase()}, ${pl.ajustado ? 'reestruturado pela IA em ' + dataBR(p.planoAjuste.desde) : 'calculado com o seu metabolismo e a sua rotina'}.</p></div></div>
+    <div class="cabecalho"><div><h1>Alimentação</h1><p class="suave">Plano para ${OBJETIVOS[pl.objetivo].nome.toLowerCase()}, ${pl.ajustado ? 'reestruturado em ' + dataBR(p.planoAjuste.desde) : 'calculado com o seu metabolismo e a sua rotina'}.</p></div></div>
     <div class="duas">
       <div class="card destaque"><p class="pequeno suave">Meta diária</p><p class="heroi">${n0(pl.kcal)} <small>kcal</small></p>
         <p style="margin-top:10px">${ajusteTxt.charAt(0).toUpperCase() + ajusteTxt.slice(1)}. ${ritmo}</p></div>
@@ -1113,7 +1101,7 @@ function viewEvolucao() {
   const v = x => (x == null ? '–' : n1(x));
   const c = (rot, id, un, ex) => `<label class="campo"><span>${rot}</span><div class="com-unidade"><input class="entrada" id="m-${id}" inputmode="decimal" placeholder="${ex}"><i>${un}</i></div></label>`;
   return `
-    <div class="cabecalho"><div><h1>Evolução</h1><p class="suave">Lance o peso e a bioimpedância toda semana. A IA analisa a evolução e o plano se recalcula com os números novos.</p></div></div>
+    <div class="cabecalho"><div><h1>Evolução</h1><p class="suave">Lance o peso e a bioimpedância toda semana. A análise e o plano se refazem com os números novos.</p></div></div>
     ${cartaoAnalise()}
     <div class="graficos secao">${grafico('Peso', serie('peso'), 'kg', 1)}${grafico('Gordura corporal', serie('gordura'), '%', 1)}${serie('musculo').length ? grafico('Músculo esquelético', serie('musculo'), '%', 1) : ''}${grafico('Massa magra', magra, 'kg', 1)}</div>
 
@@ -1322,9 +1310,7 @@ const ACOES = {
       estado.perfil.peso = peso;
       ['gordura', 'visceral', 'musculo', 'tmb'].forEach(k => { if (m[k] !== null) estado.perfil.bio[k] = m[k]; });
     }
-    salvar(); render(); toast('Medição salva. Plano recalculado.');
-    // medição mais recente lançada no site publicado: já pede a análise da semana
-    if (iaDisponivel() && estado.medidas[estado.medidas.length - 1].data === data) gerarAnalise();
+    salvar(); render(); toast('Medição salva. Análise e plano atualizados.');
   },
   'apagar-medida'(el) {
     if (!confirm('Apagar a medição de ' + dataBR(el.dataset.valor) + '?')) return;
@@ -1390,7 +1376,7 @@ const ACOES = {
   'crono-pular'() { pararDescanso(); }
 };
 
-Object.assign(ACOES, ACOES_IA);
+Object.assign(ACOES, ACOES_ACOMPANHAMENTO);
 
 function atualizarGrade() { const g = $('#grade'); if (g) g.innerHTML = gradeExercicios(); else render(); }
 
@@ -1416,7 +1402,7 @@ document.addEventListener('submit', ev => {
 document.addEventListener('change', ev => {
   const t = ev.target;
   if (t.id === 'filtro-equip') { ui.filtro.equip = t.value; atualizarGrade(); }
-  else if (t.id === 'd-data' || t.id === 'd-refeicao') { campoDiario(t); rascunhoDiario().erro = ''; render(); }
+  else if (t.id === 'd-data' || t.id === 'd-refeicao' || t.id === 'd-un') { campoDiario(t); rascunhoDiario().erro = ''; render(); }
   else if (t.dataset.item != null) {
     const it = diaAtual().itens[parseInt(t.dataset.item, 10)], prop = t.dataset.prop;
     if (!it) return;

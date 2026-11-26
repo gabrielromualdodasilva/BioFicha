@@ -13,8 +13,8 @@
   --marca2: #0c7a6c;
   --marca-tinta: #ffffff;
   --marca-fraca: #e1f4e9;
-  --ia: #6a48e0;
-  --ia-f: #efeaff;
+  --acento: #6a48e0;
+  --acento-f: #efeaff;
   --bom: #137a4b;
   --atencao: #955600;
   --alerta: #b3261e;
@@ -47,8 +47,8 @@
     --marca2: #2dd4bf;
     --marca-tinta: #03200f;
     --marca-fraca: #11301f;
-    --ia: #a892ff;
-    --ia-f: #211a3c;
+    --acento: #a892ff;
+    --acento-f: #211a3c;
     --bom: #4ade95;
     --atencao: #f2b544;
     --alerta: #ff8379;
@@ -146,19 +146,14 @@ img { display: block; max-width: 100%; }
 .card.destaque .btn.primario { background: #fff; border-color: #fff; color: #0c5a3a; }
 /* Cartão que pede uma ação agora */
 .card.chamada { border-color: var(--marca); background: linear-gradient(180deg, var(--marca-fraca), var(--sup) 70%); }
-/* Cartões da IA */
-.card.ia { border-color: color-mix(in srgb, var(--ia) 45%, var(--linha)); background: linear-gradient(180deg, var(--ia-f), var(--sup) 150px); }
-.selo-ia { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 8px; border-radius: 999px; font-size: 12px; font-weight: 750; letter-spacing: .01em; background: var(--ia-f); color: var(--ia); border: 1px solid color-mix(in srgb, var(--ia) 30%, transparent); }
-.resumo-ia { font-size: 16px; line-height: 1.55; margin-bottom: 16px; }
-.ia-colunas { margin-top: 18px; }
-.ia-colunas h3 { margin-bottom: 8px; }
+/* Análise da semana e reestruturação */
+.card.analise { border-color: color-mix(in srgb, var(--acento) 45%, var(--linha)); background: linear-gradient(180deg, var(--acento-f), var(--sup) 150px); }
+.selo-auto { display: inline-flex; align-items: center; gap: 6px; padding: 3px 10px 3px 8px; border-radius: 999px; font-size: 12px; font-weight: 750; letter-spacing: .01em; background: var(--acento-f); color: var(--acento); border: 1px solid color-mix(in srgb, var(--acento) 30%, transparent); }
+.resumo-analise { font-size: 16px; line-height: 1.55; margin-bottom: 16px; }
+.colunas-analise { margin-top: 18px; }
+.colunas-analise h3 { margin-bottom: 8px; }
 .meta-semana { margin-top: 18px; padding: 14px 16px; border-radius: var(--raio-p); background: var(--marca-fraca); display: grid; gap: 2px; border-left: 4px solid var(--marca); }
 .meta-semana .mini { color: var(--marca); font-weight: 750; text-transform: uppercase; letter-spacing: .06em; }
-.anteriores { margin-top: 18px; border-top: 1px solid var(--linha); padding-top: 12px; }
-.anteriores summary { cursor: pointer; font-weight: 650; color: var(--suave); }
-.anterior { margin-top: 16px; padding-top: 16px; border-top: 1px dashed var(--linha); }
-.anterior > h3 { margin-bottom: 8px; }
-
 .btn {
   display: inline-flex; align-items: center; justify-content: center; gap: 8px; min-height: 42px; padding: 8px 18px;
   border-radius: var(--raio-p); border: 1px solid var(--linha); background: var(--sup); font-weight: 700; text-decoration: none; color: var(--texto);
@@ -236,6 +231,7 @@ textarea.entrada { resize: vertical; line-height: 1.5; min-height: 108px; }
   max-width: 460px; margin-top: clamp(20px, 9vh, 90px); padding: 30px 28px 32px; display: grid; gap: 16px; align-content: start;
   background: var(--sup); border: 1px solid var(--linha); border-radius: 24px; box-shadow: var(--sombra);
 }
+.cadastro.conta { align-self: start; width: calc(100% - 28px); }
 .cadastro.conta .logo { padding-bottom: 6px; }
 .btn.largo { width: 100%; }
 .link { border: 0; background: none; padding: 0; color: var(--marca); font-weight: 700; text-decoration: underline; text-underline-offset: 3px; }
@@ -389,6 +385,13 @@ textarea.entrada { resize: vertical; line-height: 1.5; min-height: 108px; }
 .grupo-ali li.ou::before { content: "ou "; font-size: 12px; }
 .lista { margin: 0; padding-left: 18px; display: grid; gap: 8px; }
 /* Diário */
+.resultados { display: grid; gap: 6px; margin-top: 8px; }
+.resultado { text-align: left; display: grid; gap: 1px; padding: 10px 13px; border-radius: var(--raio-p); border: 1px solid var(--linha); background: var(--sup); transition: border-color .12s, background .12s; }
+.resultado:hover, .resultado:focus-visible { border-color: var(--marca); background: var(--marca-fraca); }
+.resultado b { font-weight: 700; }
+.resultado span { font-size: 12.5px; color: var(--suave); }
+.alimento-escolhido { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border-radius: var(--raio-p); background: var(--marca-fraca); }
+.previa { margin-top: 10px; font-weight: 700; min-height: 1.5em; }
 .diario-topo { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
 .barra-meta { margin-top: 12px; }
 .linha-meta { display: flex; justify-content: space-between; gap: 10px; font-size: 13.5px; }
@@ -466,6 +469,8 @@ table.tabela { width: 100%; border-collapse: collapse; font-size: 14px; }
   .card { padding: 17px; }
   .item { grid-template-columns: 100px 1fr; }
   .item .anim { width: 100px; }
+  .linha-filtros .entrada, .linha-filtros select.entrada { max-width: none; flex: 1 1 100%; }
+  .cabecalho { align-items: flex-start; }
   .so-largo { display: none; }
   .so-estreito { display: inline; }
   .nav-item > span { text-transform: capitalize; }

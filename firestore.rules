@@ -36,8 +36,6 @@ service cloud.firestore {
       allow read: if ehAdmin();
     }
 
-    // uso/<id da conta>: contador diário de pedidos à IA. Só o servidor (functions) lê e grava.
-
     match /convites/{email} {
       allow read, delete: if ehAdmin();
       allow create, update: if ehAdmin() && request.resource.data.email == email && email == email.lower();

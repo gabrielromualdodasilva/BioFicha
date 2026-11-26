@@ -6,5 +6,4 @@ ficha-academia-*.json
 .firebase/
 *.log
 
-# Dependências do servidor da IA
 node_modules/
