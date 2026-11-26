@@ -119,7 +119,23 @@ function dadosDemo() {
     { data: '2026-11-24', peso: 88.4, gordura: 25.6, visceral: 10, musculo: 35.8, tmb: 1845 }
   ];
   const a = analisar(perfil);
-  return { modelo: 2, diario: [], planoDesde: '2026-10-25', perfil, ficha: gerarFicha(perfil, a.objetivo), medidas, sessoes: [{ data: '2026-11-23', dia: 'A', titulo: 'Superiores A', feitas: 18, total: 18, minutos: 52 }], sessao: null };
+  return { modelo: 2, diario: [], planoDesde: '2026-10-25', perfil, ficha: gerarFicha(perfil, a.objetivo), medidas, sessoes: sessoesDemo(), sessao: null };
+}
+
+// Treinos de exemplo: dez semanas, de 2 a 4 dias por semana, sempre nos mesmos dias para o exemplo não mudar a cada visita
+function sessoesDemo() {
+  const d0 = new Date(); d0.setHours(12, 0, 0, 0);
+  const iso = d => new Date(d - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10), hoje = iso(d0);
+  const segunda = new Date(d0); segunda.setDate(segunda.getDate() - ((segunda.getDay() + 6) % 7));
+  const padroes = [[0, 2], [0, 2, 4], [1, 3, 4], [0, 1, 3, 4], [0, 2, 4], [1, 4], [0, 1, 3, 4], [0, 2, 3, 5], [0, 1, 3, 4], [0, 2]];
+  const treinos = [['A', 'Superiores A'], ['B', 'Inferiores A'], ['C', 'Superiores B'], ['D', 'Inferiores B']], lista = [];
+  padroes.forEach((dias, s) => dias.forEach(k => {
+    const d = new Date(segunda); d.setDate(d.getDate() - (9 - s) * 7 + k);
+    if (iso(d) > hoje) return;
+    const t = treinos[lista.length % 4], total = 18 + (lista.length % 3) * 2;
+    lista.push({ data: iso(d), dia: t[0], titulo: t[1], feitas: total - (lista.length % 5 === 0 ? 2 : 0), total, minutos: 46 + (lista.length * 7) % 19 });
+  }));
+  return lista;
 }
 
 /* ───────── Roteamento e moldura ───────── */
@@ -834,7 +850,7 @@ function viewPainel() {
     </div>
 
     <div class="secao"><h2>Seus números</h2>
-      <div class="tiles">
+      <div class="tiles equilibrado" style="--colunas:${Math.ceil((5 + (a.visceral !== null ? 1 : 0) + (a.musculo !== null ? 1 : 0)) / 2)}">
         ${tile('Gordura corporal' + (a.gorduraMedida ? '' : ' (estimada)'), n1(a.gordura), '%', selo(a.gorduraClasse.nivel, a.gorduraClasse.rotulo))}
         ${a.visceral !== null ? tile('Gordura abdominal', n0(a.visceral), 'nível', selo(a.visceralClasse.nivel, a.visceralClasse.rotulo)) : ''}
         ${a.musculo !== null ? tile('Músculo esquelético', n1(a.musculo), '%', selo(a.musculoClasse.nivel, a.musculoClasse.rotulo)) : ''}
@@ -844,6 +860,8 @@ function viewPainel() {
         ${tile('Gasto diário', n0(a.gastoDiario), 'kcal', `<span class="mini suave">com ${a.dias} treinos por semana</span>`)}
       </div>
     </div>
+
+    ${secaoFrequencia()}
 
     <div class="secao duas">
       <div class="card"><h2>Composição corporal</h2>

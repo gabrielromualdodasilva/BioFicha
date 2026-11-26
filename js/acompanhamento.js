@@ -442,6 +442,113 @@ function cartaoReestruturar() {
     <div class="acoes" style="margin-top:12px"><button class="btn ${pronto ? 'primario' : ''}" data-acao="reestruturar">${ic('raio', 'p')}${pronto ? 'Reestruturar alimentação' : 'Reestruturar agora'}</button></div></div>`;
 }
 
+/* ───────── Constância: frequência de treino e médias ─────────
+   A semana vai de segunda a domingo. "Dias treinados" conta dias diferentes com pelo menos um treino concluído. */
+const segundaDe = iso => { const d = new Date(iso + 'T12:00:00'); d.setDate(d.getDate() - ((d.getDay() + 6) % 7)); return d.toISOString().slice(0, 10); };
+function frequenciaDeTreino(e) {
+  e = e || estado;
+  const hoje = hojeISO(), ss = (e.sessoes || []).filter(s => s.data <= hoje), meta = parseInt(e.perfil.dias, 10) || 3;
+  const treinados = new Set(ss.map(s => s.data)), seg0 = segundaDe(hoje);
+  // 12 semanas, da mais antiga para a atual
+  const semanas = Array.from({ length: 12 }, (_, i) => {
+    const inicio = dataMenos(seg0, (11 - i) * 7), dias = Array.from({ length: 7 }, (_, k) => dataMenos(inicio, -k));
+    return { inicio, dias, n: dias.filter(d => treinados.has(d)).length };
+  });
+  const atual = semanas[11], primeira = ss.length ? segundaDe(ss.reduce((m, s) => (s.data < m ? s.data : m), ss[0].data)) : null;
+  // Média por semana: semanas completas desde o primeiro treino (até 4); sem nenhuma completa, vale a semana atual
+  const completas = semanas.slice(0, 11).filter(s => primeira && s.inicio >= primeira).slice(-4);
+  const media = completas.length ? completas.reduce((t, s) => t + s.n, 0) / completas.length : (ss.length ? atual.n : null);
+  // Sequência de semanas seguidas com a meta batida (a atual só conta se já bateu)
+  let sequencia = atual.n >= meta ? 1 : 0;
+  for (let i = 10; i >= 0 && semanas[i].n >= meta; i--) sequencia++;
+  const recentes = ss.filter(s => s.data > dataMenos(hoje, 28));
+  const comDuracao = recentes.filter(s => s.minutos > 0), planejadas = recentes.reduce((t, s) => t + (s.total || 0), 0);
+  const porDia = [0, 0, 0, 0, 0, 0, 0]; ss.forEach(s => { porDia[(new Date(s.data + 'T12:00:00').getDay() + 6) % 7]++; });
+  const maior = Math.max(...porDia);
+  return {
+    meta, semanas, atual, total: ss.length, media, semanasNaMedia: completas.length, sequencia,
+    dias28: new Set(recentes.map(s => s.data)).size,
+    duracaoMedia: comDuracao.length ? Math.round(comDuracao.reduce((t, s) => t + s.minutos, 0) / comDuracao.length) : null,
+    aproveitamento: planejadas ? Math.round(recentes.reduce((t, s) => t + (s.feitas || 0), 0) / planejadas * 100) : null,
+    diaFavorito: ss.length >= 3 ? ['segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado', 'domingo'][porDia.indexOf(maior)] : null,
+    diasSemTreinar: ss.length ? diasEntre(ss.reduce((m, s) => (s.data > m ? s.data : m), ss[0].data), hoje) : null,
+    treinados
+  };
+}
+const LETRAS_DIA = ['S', 'T', 'Q', 'Q', 'S', 'S', 'D'], NOMES_DIA = ['segunda', 'terça', 'quarta', 'quinta', 'sexta', 'sábado', 'domingo'];
+// Barras de dias treinados por semana (8 semanas), com a linha da meta
+function graficoSemanas(f) {
+  const sem = f.semanas.slice(-8), W = GRAF_W, H = 170, m = { t: 16, r: 44, b: 24, l: 22 };
+  const max = Math.max(f.meta, ...sem.map(s => s.n), 1), base = H - m.b, alt = base - m.t;
+  const passo = (W - m.l - m.r) / sem.length, larg = Math.min(22, passo * 0.56);
+  const y = v => base - v / max * alt, cx = i => m.l + passo * (i + 0.5);
+  const rot = s => (s === f.atual ? 'esta semana' : 'semana de ' + dataCurta(s.inicio));
+  const dados = sem.map((s, i) => ({ x: +cx(i).toFixed(1), y: +y(s.n).toFixed(1), t: `${rot(s)} · ${s.n} ${s.n === 1 ? 'dia' : 'dias'}` }));
+  const barra = (s, i) => {
+    if (!s.n) return `<line class="barra-zero" x1="${(cx(i) - larg / 2).toFixed(1)}" x2="${(cx(i) + larg / 2).toFixed(1)}" y1="${base}" y2="${base}"/>`;
+    const x0 = cx(i) - larg / 2, h = base - y(s.n), r = Math.min(4, h);          // pontas arredondadas só em cima, presas à base
+    return `<path class="barra ${s === f.atual ? 'atual' : ''}" d="M${x0.toFixed(1)} ${base}v${(-(h - r)).toFixed(1)}q0 ${-r} ${r} ${-r}h${(larg - 2 * r).toFixed(1)}q${r} 0 ${r} ${r}v${(h - r).toFixed(1)}z"/>`;
+  };
+  return `<div class="grafico"><svg viewBox="0 0 ${W} ${H}" role="img" aria-label="Dias treinados por semana nas últimas 8 semanas. Esta semana: ${f.atual.n} de ${f.meta}." data-pontos='${JSON.stringify(dados)}'>
+      <line class="grade-l" x1="${m.l}" x2="${W - m.r}" y1="${base}" y2="${base}"/>
+      <line class="guia" y1="${m.t}" y2="${base}" x1="0" x2="0" visibility="hidden"/>
+      ${sem.map(barra).join('')}
+      <line class="linha-meta-g" x1="${m.l}" x2="${W - m.r}" y1="${y(f.meta).toFixed(1)}" y2="${y(f.meta).toFixed(1)}"/>
+      <text class="eixo" x="${W - m.r + 6}" y="${(y(f.meta) + 4).toFixed(1)}">meta ${f.meta}</text>
+      <text class="rotulo-fim" x="${cx(sem.length - 1).toFixed(1)}" y="${(y(f.atual.n) - 6).toFixed(1)}" text-anchor="middle">${f.atual.n}</text>
+      <text class="eixo" x="${cx(0).toFixed(1)}" y="${H - 6}" text-anchor="middle">${dataCurta(sem[0].inicio)}</text>
+      <text class="eixo" x="${cx(sem.length - 1).toFixed(1)}" y="${H - 6}" text-anchor="middle">esta</text>
+    </svg><div class="dica-graf" hidden></div></div>
+    <details class="ver-tabela"><summary>Ver em tabela</summary><table class="tabela"><tr><th>Semana</th><th>Dias treinados</th><th>Meta</th></tr>
+      ${sem.slice().reverse().map(s => `<tr><td>${s === f.atual ? 'Esta semana' : 'Semana de ' + dataBR(s.inicio)}</td><td>${s.n}</td><td>${s.n >= f.meta ? 'batida' : 'faltou ' + (f.meta - s.n)}</td></tr>`).join('')}</table></details>`;
+}
+// Calendário das últimas 12 semanas: uma coluna por semana, uma linha por dia
+function calendarioTreinos(f) {
+  const hoje = hojeISO(), MESES = ['jan', 'fev', 'mar', 'abr', 'mai', 'jun', 'jul', 'ago', 'set', 'out', 'nov', 'dez'];
+  const mes = iso => MESES[parseInt(iso.slice(5, 7), 10) - 1];
+  const topo = f.semanas.map((s, i) => `<span>${i === 0 || mes(s.inicio) !== mes(f.semanas[i - 1].inicio) ? mes(s.inicio) : ''}</span>`).join('');
+  const linhas = LETRAS_DIA.map((letra, k) => `<span class="rot-dia" aria-hidden="true">${letra}</span>` + f.semanas.map(s => {
+    const d = s.dias[k], fez = f.treinados.has(d), futuro = d > hoje;
+    return `<i class="cel ${fez ? 'fez' : ''} ${futuro ? 'futuro' : ''} ${d === hoje ? 'hoje' : ''}" title="${NOMES_DIA[k]}, ${dataBR(d)}${futuro ? '' : fez ? ': treinou' : ': sem treino'}"></i>`;
+  }).join('')).join('');
+  return `<div class="calendario" role="img" aria-label="Calendário das últimas 12 semanas: ${f.semanas.reduce((t, s) => t + s.n, 0)} dias treinados.">
+      <span></span>${topo}${linhas}</div>
+    <div class="legenda"><span><i class="cel fez"></i>Treinou</span><span><i class="cel"></i>Sem treino</span><span><i class="cel hoje"></i>Hoje</span></div>`;
+}
+function secaoFrequencia() {
+  const f = frequenciaDeTreino(), hoje = hojeISO();
+  if (!f.total) return `<div class="secao"><h2>Sua constância</h2><div class="vazio">Conclua o primeiro treino para começar a contar a frequência. A meta é de ${f.meta} ${f.meta === 1 ? 'dia' : 'dias'} por semana.</div></div>`;
+  const falta = f.meta - f.atual.n, C = 2 * Math.PI * 34, pct = Math.min(1, f.atual.n / f.meta);
+  const d7 = resumoDiario(dataMenos(hoje, 6), hoje), pl = planoAlimentar(estado.perfil, analise());
+  const pesos = (estado.medidas || []).filter(m => m.peso != null), p0 = pesos.find(m => m.data >= dataMenos(hoje, 35)) || pesos[0], p1 = pesos[pesos.length - 1];
+  const ritmo = p0 && p1 && p0 !== p1 && diasEntre(p0.data, p1.data) >= 7 ? (p1.peso - p0.peso) / diasEntre(p0.data, p1.data) * 7 : null;
+  return `<div class="secao"><h2>Sua constância</h2>
+    <div class="constancia">
+      <div class="card semana-atual">
+        <div class="anel" role="img" aria-label="${f.atual.n} de ${f.meta} dias treinados nesta semana">
+          <svg viewBox="0 0 80 80"><circle class="anel-fundo" cx="40" cy="40" r="34"/><circle class="anel-valor" cx="40" cy="40" r="34" stroke-dasharray="${(C * pct).toFixed(1)} ${C.toFixed(1)}" transform="rotate(-90 40 40)"/></svg>
+          <div class="anel-centro"><b>${f.atual.n}</b><span>de ${f.meta}</span></div></div>
+        <div class="semana-texto"><h3>Esta semana</h3>
+          <p class="suave pequeno">${falta <= 0 ? 'Meta da semana batida.' : `${falta === 1 ? 'Falta 1 dia' : 'Faltam ' + falta + ' dias'} de treino para a meta.`}${f.diasSemTreinar >= 4 ? ` Último treino há ${f.diasSemTreinar} dias.` : ''}</p>
+          <div class="dias-semana">${f.atual.dias.map((d, k) => `<span class="dia ${f.treinados.has(d) ? 'fez' : ''} ${d === hoje ? 'hoje' : ''} ${d > hoje ? 'futuro' : ''}" title="${NOMES_DIA[k]}${f.treinados.has(d) ? ': treinou' : ''}"><i>${f.treinados.has(d) ? ic('check', 'p') : ''}</i>${LETRAS_DIA[k]}</span>`).join('')}</div></div>
+      </div>
+      <div class="card"><h3>Dias treinados por semana</h3><p class="suave pequeno" style="margin-bottom:6px">Últimas 8 semanas · meta de ${f.meta} ${f.meta === 1 ? 'dia' : 'dias'}</p>${graficoSemanas(f)}</div>
+    </div>
+    <div class="tiles" style="margin-top:12px">
+      ${tile('Média por semana', f.media === null ? '–' : n1(f.media), f.media === null ? '' : 'dias', `<span class="mini suave">${f.semanasNaMedia ? (f.semanasNaMedia === 1 ? 'última semana completa' : `últimas ${f.semanasNaMedia} semanas completas`) : 'semana atual'}</span>`)}
+      ${tile('Sequência', f.sequencia, f.sequencia === 1 ? 'semana' : 'semanas', '<span class="mini suave">seguidas com a meta batida</span>')}
+      ${tile('Dias treinados', f.dias28, '', '<span class="mini suave">nos últimos 28 dias</span>')}
+      ${tile('Duração média', f.duracaoMedia === null ? '–' : f.duracaoMedia, f.duracaoMedia === null ? '' : 'min', '<span class="mini suave">por treino, em 28 dias</span>')}
+      ${tile('Séries concluídas', f.aproveitamento === null ? '–' : f.aproveitamento, f.aproveitamento === null ? '' : '%', '<span class="mini suave">do planejado, em 28 dias</span>')}
+      ${d7.dias ? tile('Calorias por dia', n0(d7.kcalMedia), 'kcal', `<span class="mini suave">média de ${d7.dias} ${d7.dias === 1 ? 'dia' : 'dias'} · meta ${n0(pl.kcal)}</span>`) : ''}
+      ${d7.dias ? tile('Proteína por dia', n0(d7.proteinaMedia), 'g', `<span class="mini suave">média da semana · meta ${n0(pl.proteina)}</span>`) : ''}
+      ${ritmo !== null ? tile('Ritmo do peso', (Math.abs(ritmo) < 0.05 ? '0,0' : (ritmo > 0 ? '+' : '−') + n1(Math.abs(ritmo))), 'kg/sem', `<span class="mini suave">média desde ${dataBR(p0.data)}</span>`) : ''}
+    </div>
+    <div class="card" style="margin-top:12px"><div class="cabecalho" style="margin-bottom:12px"><div><h3>Últimas 12 semanas</h3><p class="suave pequeno">${f.total} ${f.total === 1 ? 'treino concluído' : 'treinos concluídos'} no total${f.diaFavorito ? ` · você treina mais na ${f.diaFavorito}` : ''}</p></div></div>
+      ${calendarioTreinos(f)}</div>
+  </div>`;
+}
+
 /* ───────── Ações (entram no mapa de ações de app.js) ───────── */
 const ACOES_ACOMPANHAMENTO = {
   'diario-escolher'(el) { const d = rascunhoDiario(); d.sel = el.dataset.valor; d.qtd = '1'; d.un = 'porcao'; d.erro = ''; render(); const c = $('#d-qtd'); if (c) { c.focus(); c.select(); } },
