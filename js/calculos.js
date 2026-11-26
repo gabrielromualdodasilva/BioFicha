@@ -36,14 +36,29 @@ function calcularIdade(nascimento, hoje) {
   return anos;
 }
 
-function faixasGordura(sexo) {
-  return sexo === 'F'
-    ? [{ ate: 14, rotulo: 'Muito baixa', nivel: 'atencao' }, { ate: 21, rotulo: 'Atleta', nivel: 'bom' },
-       { ate: 25, rotulo: 'Boa forma', nivel: 'bom' }, { ate: 32, rotulo: 'Média', nivel: 'neutro' },
-       { ate: 60, rotulo: 'Elevada', nivel: 'alerta' }]
-    : [{ ate: 6, rotulo: 'Muito baixa', nivel: 'atencao' }, { ate: 14, rotulo: 'Atleta', nivel: 'bom' },
-       { ate: 18, rotulo: 'Boa forma', nivel: 'bom' }, { ate: 25, rotulo: 'Média', nivel: 'neutro' },
-       { ate: 50, rotulo: 'Elevada', nivel: 'alerta' }];
+/* Faixas de referência no padrão das balanças Omron (manual da HBF-514C): cada número é classificado
+   em baixo, normal, alto ou muito alto, conforme o sexo e a idade. */
+const faixaEtaria = idade => (idade < 40 ? 0 : idade < 60 ? 1 : 2);
+const NIVEIS_OMRON = [['Baixa', 'atencao'], ['Normal', 'bom'], ['Alta', 'atencao'], ['Muito alta', 'alerta']];
+
+// Gordura corporal (%): limites inferiores de normal, alta e muito alta
+const GORDURA_OMRON = { F: [[21, 33, 39], [23, 34, 40], [24, 36, 42]], M: [[8, 20, 25], [11, 22, 28], [13, 25, 30]] };
+function faixasGordura(sexo, idade) {
+  const c = GORDURA_OMRON[sexo === 'F' ? 'F' : 'M'][faixaEtaria(idade == null ? 30 : idade)];
+  return [c[0], c[1], c[2], 75].map((ate, i) => ({ ate, rotulo: NIVEIS_OMRON[i][0], nivel: NIVEIS_OMRON[i][1] }));
+}
+
+// Músculo esquelético (% do peso): limites inferiores de normal, alto e muito alto
+const MUSCULO_OMRON = { F: [[24.3, 30.4, 35.4], [24.1, 30.2, 35.2], [23.9, 30.0, 35.0]], M: [[33.3, 39.4, 44.1], [33.1, 39.2, 43.9], [32.9, 39.0, 43.7]] };
+function classificarMusculo(pct, sexo, idade) {
+  const c = MUSCULO_OMRON[sexo === 'F' ? 'F' : 'M'][faixaEtaria(idade)];
+  const i = pct < c[0] ? 0 : pct < c[1] ? 1 : pct < c[2] ? 2 : 3;
+  return { rotulo: ['Baixo', 'Normal', 'Alto', 'Muito alto'][i], nivel: i === 0 ? 'atencao' : 'bom', faixaNormal: [c[0], c[1]] };
+}
+
+// Gordura abdominal (visceral), nível de 1 a 30: até 9 normal, 10 a 14 alta, 15 ou mais muito alta
+function classificarVisceral(nivel) {
+  return nivel < 10 ? { rotulo: 'Normal', nivel: 'bom' } : nivel < 15 ? { rotulo: 'Alta', nivel: 'atencao' } : { rotulo: 'Muito alta', nivel: 'alerta' };
 }
 
 function classificarIMC(imc) {
@@ -72,8 +87,9 @@ function analisar(perfil, hoje) {
   a.gorduraMedida = gMedida !== null;
   a.gordura = a.gorduraMedida ? gMedida
     : Math.min(55, Math.max(5, 1.2 * a.imc + 0.23 * idade - 10.8 * (sexo === 'M' ? 1 : 0) - 5.4));
-  a.faixas = faixasGordura(sexo);
+  a.faixas = faixasGordura(sexo, idade);
   a.gorduraClasse = a.faixas.find(f => a.gordura < f.ate) || a.faixas[a.faixas.length - 1];
+  const nivelGordura = a.faixas.indexOf(a.gorduraClasse);      // 0 baixa, 1 normal, 2 alta, 3 muito alta
   a.massaGorda = peso * a.gordura / 100;
   a.massaMagra = peso - a.massaGorda;
   a.ffmi = a.massaMagra / (h * h);
@@ -81,33 +97,16 @@ function analisar(perfil, hoje) {
   a.ffmiClasse = a.ffmi < ffmiCortes[0] ? 'abaixo da média' : a.ffmi < ffmiCortes[1] ? 'na média'
     : a.ffmi < ffmiCortes[2] ? 'acima da média' : 'muito desenvolvida';
 
-  // Demais dados da bioimpedância
+  // Demais dados da bioimpedância: gordura abdominal (visceral, nível) e músculo esquelético (% do peso)
   a.visceral = num(bio.visceral);
-  if (a.visceral !== null) {
-    a.visceralClasse = a.visceral < 10 ? { rotulo: 'Saudável', nivel: 'bom' }
-      : a.visceral < 15 ? { rotulo: 'Elevada', nivel: 'atencao' } : { rotulo: 'Muito elevada', nivel: 'alerta' };
-  }
-  a.agua = num(bio.agua);
-  if (a.agua !== null) {
-    const [min, max] = sexo === 'F' ? [45, 60] : [50, 65];
-    a.aguaFaixa = [min, max];
-    a.aguaClasse = a.agua < min ? { rotulo: 'Abaixo do ideal', nivel: 'atencao' }
-      : a.agua > max ? { rotulo: 'Acima da faixa', nivel: 'neutro' } : { rotulo: 'Adequada', nivel: 'bom' };
-  }
+  if (a.visceral !== null) a.visceralClasse = classificarVisceral(a.visceral);
   a.musculo = num(bio.musculo);
   if (a.musculo !== null) {
-    a.musculoPct = a.musculo / peso * 100;
-    // Balanças informam massa muscular esquelética (~25-45% do peso) ou massa muscular total (acima de 50%).
-    if (a.musculoPct <= 50) {
-      const [min, max] = sexo === 'F' ? [24, 30] : [33, 39];
-      a.musculoClasse = a.musculoPct < min ? { rotulo: 'Baixa', nivel: 'atencao' }
-        : a.musculoPct > max ? { rotulo: 'Alta', nivel: 'bom' } : { rotulo: 'Normal', nivel: 'bom' };
-    }
+    a.musculoKg = peso * a.musculo / 100;
+    a.musculoClasse = classificarMusculo(a.musculo, sexo, idade);
   }
-  a.idadeMet = num(bio.idadeMet);
-  a.ossea = num(bio.ossea);
 
-  // Metabolismo basal e gasto diário
+  // Metabolismo em repouso e gasto diário
   const tmbInf = num(bio.tmb);
   if (tmbInf !== null && tmbInf >= 800 && tmbInf <= 4000) {
     a.tmb = tmbInf; a.tmbFonte = 'informado pela bioimpedância';
@@ -121,57 +120,55 @@ function analisar(perfil, hoje) {
   a.fatorAtividade = Math.min(1.9, rot.base + rot.porTreino * dias);
   a.gastoDiario = a.tmb * a.fatorAtividade;
 
-  // Objetivo recomendado
-  const alto = sexo === 'F' ? 32 : 25, medio = sexo === 'F' ? 25 : 18;
-  a.gorduraAlta = a.gordura >= alto;
+  // Objetivo recomendado, pela faixa de gordura: muito alta → emagrecer; alta → recomposição; normal ou baixa → ganhar massa
+  a.gorduraAlta = nivelGordura === 3;
   if (a.imc < 18.5) {
     a.objetivoRecomendado = 'hipertrofia';
     a.motivoObjetivo = 'Seu peso está abaixo do recomendado para a sua altura; a prioridade é ganhar massa.';
   } else if (a.gorduraAlta || (a.visceral !== null && a.visceral >= 10)) {
     a.objetivoRecomendado = 'emagrecer';
     a.motivoObjetivo = a.gorduraAlta
-      ? `Seu percentual de gordura (${br(a.gordura)}%) está na faixa elevada; reduzir gordura traz o maior ganho de saúde agora.`
-      : 'Sua gordura visceral está acima do ideal; reduzi-la é a prioridade para a saúde.';
-  } else if (a.gordura >= medio) {
+      ? `Sua gordura corporal (${br(a.gordura)}%) está na faixa muito alta; reduzir gordura traz o maior ganho de saúde agora.`
+      : 'Sua gordura abdominal está acima do normal; reduzi-la é a prioridade para a saúde.';
+  } else if (nivelGordura === 2) {
     a.objetivoRecomendado = 'recomposicao';
-    a.motivoObjetivo = `Com ${br(a.gordura)}% de gordura você está na faixa média: dá para perder gordura e ganhar músculo ao mesmo tempo, sem dieta agressiva.`;
+    a.motivoObjetivo = `Com ${br(a.gordura)}% de gordura você está um pouco acima da faixa normal: dá para perder gordura e ganhar músculo ao mesmo tempo, sem dieta agressiva.`;
   } else {
     a.objetivoRecomendado = 'hipertrofia';
-    a.motivoObjetivo = `Seu percentual de gordura (${br(a.gordura)}%) já é baixo; é o melhor momento para focar em ganhar massa muscular.`;
+    a.motivoObjetivo = `Sua gordura corporal (${br(a.gordura)}%) está na faixa ${nivelGordura === 0 ? 'baixa' : 'normal'}; é um bom momento para focar em ganhar massa muscular.`;
   }
   a.objetivo = OBJETIVOS[perfil.objetivo] ? perfil.objetivo : a.objetivoRecomendado;
 
   // Leitura dos números
   const P = (tipo, texto) => a.pontos.push({ tipo, texto });
-  if (!a.gorduraMedida) P('info', 'Você não informou o percentual de gordura. Estou usando uma estimativa por IMC e idade; com a bioimpedância a análise fica bem mais precisa.');
-  if (a.imc >= 25 && a.gorduraMedida && !a.gorduraAlta && a.gordura < medio)
-    P('bom', `Seu IMC (${br(a.imc)}) indica sobrepeso, mas o percentual de gordura é baixo: o peso extra vem de massa muscular, não de gordura.`);
-  else if (a.imc >= 18.5 && a.imc < 25 && a.gorduraAlta)
-    P('atencao', 'Seu peso está normal para a altura, mas o percentual de gordura é elevado e a massa muscular é baixa. Musculação e proteína adequada são o caminho.');
-  if (a.gorduraClasse.nivel === 'alerta')
-    P('alerta', `Percentual de gordura de ${br(a.gordura)}%, na faixa elevada. Isso equivale a cerca de ${br(a.massaGorda)} kg de gordura.`);
-  else if (a.gorduraClasse.rotulo === 'Muito baixa')
-    P('atencao', `Percentual de gordura de ${br(a.gordura)}%, muito baixo. Manter esse nível por muito tempo pode afetar hormônios e imunidade.`);
+  const normalG = `${a.faixas[0].ate}% a ${br(a.faixas[1].ate - 0.1)}%`;
+  if (!a.gorduraMedida) P('info', 'Você não informou a gordura corporal. Estou usando uma estimativa por IMC e idade; com a bioimpedância a análise fica bem mais precisa.');
+  if (a.imc >= 25 && a.gorduraMedida && nivelGordura <= 1)
+    P('bom', `Seu IMC (${br(a.imc)}) indica sobrepeso, mas a gordura corporal está na faixa ${nivelGordura === 0 ? 'baixa' : 'normal'}: o peso extra vem de massa muscular, não de gordura.`);
+  else if (a.imc >= 18.5 && a.imc < 25 && nivelGordura >= 2)
+    P('atencao', 'Seu peso está normal para a altura, mas a gordura corporal está acima da faixa normal e a massa muscular é baixa. Musculação e proteína adequada são o caminho.');
+  if (nivelGordura === 3)
+    P('alerta', `Gordura corporal de ${br(a.gordura)}%, na faixa muito alta (o normal para o seu sexo e idade é de ${normalG}). Isso equivale a cerca de ${br(a.massaGorda)} kg de gordura.`);
+  else if (nivelGordura === 2)
+    P('atencao', `Gordura corporal de ${br(a.gordura)}%, na faixa alta (o normal para o seu sexo e idade é de ${normalG}).`);
+  else if (nivelGordura === 0)
+    P('atencao', `Gordura corporal de ${br(a.gordura)}%, abaixo da faixa normal (${normalG}). Manter esse nível por muito tempo pode afetar hormônios e imunidade.`);
   else
-    P(a.gorduraClasse.nivel === 'bom' ? 'bom' : 'info', `Percentual de gordura de ${br(a.gordura)}%, na faixa "${a.gorduraClasse.rotulo.toLowerCase()}".`);
+    P('bom', `Gordura corporal de ${br(a.gordura)}%, dentro da faixa normal para o seu sexo e idade (${normalG}).`);
   if (!a.gorduraMedida || a.gorduraAlta)
     P('info', `Massa magra ${a.gorduraMedida ? 'de' : 'estimada em'} ${br(a.massaMagra)} kg. Preservar e aumentar essa massa é o que mantém o metabolismo alto.`);
   else P(a.ffmiClasse === 'abaixo da média' ? 'atencao' : 'bom',
     `Massa magra de ${br(a.massaMagra)} kg (índice FFMI ${br(a.ffmi)}), ${a.ffmiClasse} para ${sexo === 'F' ? 'mulheres' : 'homens'}.`);
   if (a.visceralClasse) {
-    if (a.visceralClasse.nivel === 'bom') P('bom', `Gordura visceral nível ${a.visceral}, dentro da faixa saudável (até 9).`);
-    else P(a.visceralClasse.nivel, `Gordura visceral nível ${a.visceral} (${a.visceralClasse.rotulo.toLowerCase()}). É a gordura em volta dos órgãos, a mais ligada a risco cardiovascular. Cardio regular e redução de açúcar e álcool ajudam bastante.`);
+    if (a.visceralClasse.nivel === 'bom') P('bom', `Gordura abdominal (visceral) nível ${a.visceral}, dentro da faixa normal (até 9).`);
+    else P(a.visceralClasse.nivel, `Gordura abdominal (visceral) nível ${a.visceral}, ${a.visceralClasse.rotulo.toLowerCase()} (o normal é até 9). É a gordura em volta dos órgãos, a mais ligada a risco cardiovascular. Cardio regular e redução de açúcar e álcool ajudam bastante.`);
   }
-  if (a.aguaClasse) {
-    if (a.aguaClasse.nivel === 'atencao') P('atencao', `Água corporal de ${br(a.agua)}%, abaixo da faixa de ${a.aguaFaixa[0]}–${a.aguaFaixa[1]}%. Aumente a ingestão de água ao longo do dia.`);
-    else P('bom', `Água corporal de ${br(a.agua)}%, ${a.aguaClasse.rotulo.toLowerCase()} (referência ${a.aguaFaixa[0]}–${a.aguaFaixa[1]}%).`);
+  if (a.musculoClasse) {
+    const [min, max] = a.musculoClasse.faixaNormal, ref = `${br(min)}% a ${br(max - 0.1)}%`;
+    if (a.musculoClasse.rotulo === 'Baixo')
+      P('atencao', `Músculo esquelético de ${br(a.musculo)}% do peso (cerca de ${br(a.musculoKg)} kg), abaixo da faixa normal (${ref}). Priorize o treino de força e a proteína.`);
+    else P('bom', `Músculo esquelético de ${br(a.musculo)}% do peso (cerca de ${br(a.musculoKg)} kg), ${a.musculoClasse.rotulo === 'Normal' ? 'dentro da' : 'acima da'} faixa normal (${ref}).`);
   }
-  if (a.musculoClasse && a.musculoClasse.rotulo === 'Baixa')
-    P('atencao', `Massa muscular de ${br(a.musculo)} kg (${br(a.musculoPct)}% do peso), abaixo da referência. Priorize o treino de força.`);
-  if (a.idadeMet !== null && a.idadeMet > idade + 3)
-    P('atencao', `Idade metabólica de ${a.idadeMet} anos, acima da sua idade real (${idade}). Ganhar músculo e perder gordura reduz esse número.`);
-  else if (a.idadeMet !== null && a.idadeMet <= idade)
-    P('bom', `Idade metabólica de ${a.idadeMet} anos, igual ou menor que a sua idade real (${idade}).`);
 
   return a;
 }

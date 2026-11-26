@@ -1,0 +1,46 @@
+rules_version = '2';
+
+// Acesso por convite.
+// - convites/<e-mail em minúsculas>: quem pode usar o site. Só o administrador cria, lê a lista, altera e apaga.
+//   Campos: email, nome, criadoEm, removido, uid (id da conta criada pelo convite), chave (senha provisória do link,
+//   apagada quando a pessoa cria a própria senha), entrouEm.
+// - usuarios/<id da conta>: os dados de cada pessoa. Só a própria pessoa lê e grava, e só com convite valendo.
+// Todo o resto é negado. O administrador não lê os dados das outras pessoas.
+service cloud.firestore {
+  match /databases/{database}/documents {
+
+    function logado() { return request.auth != null; }
+
+    // Administradores, pelo id da conta (o mesmo valor de FIREBASE_ADMINS em js/firebase-config.js)
+    function ehAdmin() { return logado() && request.auth.uid in ['x34voXDvYVjAx574z7M3yUFoX7tC']; }
+
+    function emailConfirmado() { return logado() && request.auth.token.email_verified == true; }
+    function meuEmail() { return request.auth.token.email.lower(); }
+
+    // A conta é da pessoa convidada quando foi criada pelo próprio convite (mesmo id)
+    // ou quando o e-mail está confirmado (criou a senha pelo link enviado por e-mail).
+    function contaDoConvite(dados) {
+      return dados.get('uid', '') == request.auth.uid || emailConfirmado();
+    }
+    function convidado() {
+      let caminho = /databases/$(database)/documents/convites/$(meuEmail());
+      return logado() && exists(caminho)
+        && get(caminho).data.get('removido', false) != true
+        && contaDoConvite(get(caminho).data);
+    }
+
+    match /usuarios/{uid} {
+      allow read, write: if logado() && request.auth.uid == uid && (ehAdmin() || convidado());
+    }
+
+    match /convites/{email} {
+      allow read, delete: if ehAdmin();
+      allow create, update: if ehAdmin() && request.resource.data.email == email && email == email.lower();
+      // A pessoa convidada só enxerga o próprio convite, e nele só marca quando entrou e apaga a senha provisória
+      allow get: if logado() && email == meuEmail() && contaDoConvite(resource.data);
+      allow update: if logado() && email == meuEmail() && contaDoConvite(resource.data)
+        && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['entrouEm', 'chave'])
+        && !('chave' in request.resource.data);
+    }
+  }
+}

@@ -1,22 +1,64 @@
 'use strict';
-/* Interface do site. Os dados ficam salvos no próprio navegador (localStorage). */
+/* Interface do site.
+   Aberto como arquivo (ou em ?demo), os dados ficam no próprio navegador (localStorage).
+   No endereço publicado no Firebase, cada pessoa entra com a sua conta e os dados ficam no Firestore (ver "Nuvem"). */
 
 const DEMO = /[?&]demo\b/.test(location.search);
 const CHAVE = DEMO ? 'fichaAcademia.demo' : 'fichaAcademia.v1';
 const LETRAS = 'ABCDEFG';
 const TODOS_EQUIP = Object.keys(EQUIPAMENTOS).filter(k => k !== 'corpo');
 
-const estadoVazio = () => ({ perfil: null, ficha: null, medidas: [], sessoes: [], sessao: null });
+const CFG = typeof FIREBASE_CONFIG !== 'undefined' && FIREBASE_CONFIG && FIREBASE_CONFIG.apiKey ? FIREBASE_CONFIG : null;
+const NUVEM = !DEMO && !!CFG && /^https?:$/.test(location.protocol) &&
+  [CFG.projectId + '.web.app', CFG.projectId + '.firebaseapp.com', 'localhost', '127.0.0.1'].includes(location.hostname);
+// fase: local | carregando | login | baixando | pronto | falha
+const nuvem = { fase: NUVEM ? 'carregando' : 'local', usuario: null, modo: 'entrar', erro: '', aviso: '', ocupado: false, pendente: false, ref: null, parar: null, timer: null };
+
+// Link de convite (#convite=...): traz o e-mail e a senha provisória da pessoa convidada.
+// É lido uma vez e sai da barra de endereço na hora, para não ficar no histórico nem ser copiado sem querer.
+const b64url = s => btoa(unescape(encodeURIComponent(s))).replace(/\+/g, '-').replace(/\//g, '_').replace(/=+$/, '');
+let conviteLink = null;
+if (NUVEM) {
+  const m = /^#convite=([\w-]+)$/.exec(location.hash);
+  if (m) {
+    try {
+      const d = JSON.parse(decodeURIComponent(escape(atob(m[1].replace(/-/g, '+').replace(/_/g, '/')))));
+      if (d && typeof d.e === 'string' && typeof d.c === 'string') conviteLink = { e: d.e.toLowerCase(), c: d.c };
+    } catch (e) { /* link incompleto: segue para a tela de entrada */ }
+    history.replaceState(null, '', location.pathname);
+  }
+}
+
+const estadoVazio = () => ({ modelo: 2, perfil: null, ficha: null, medidas: [], sessoes: [], sessao: null });
+// Modelo 2 (bioimpedância no padrão Omron): músculo esquelético em % do peso, em vez de massa muscular em kg,
+// gordura abdominal de 1 a 30, e sem água corporal, idade metabólica e massa óssea.
+function migrar(d) {
+  if (!d || d.modelo >= 2) return d || {};
+  const converter = (o, peso, vazio) => {
+    if (!o) return;
+    const m = num(o.musculo), p = num(peso), pct = m !== null && p ? Math.round(m / p * 1000) / 10 : null;
+    if (o.musculo != null && o.musculo !== '') o.musculo = pct !== null && pct >= 5 && pct <= 60 ? pct : vazio;   // massa total (acima de 60%) não vira músculo esquelético
+    const v = num(o.visceral); if (v !== null && v > 30) o.visceral = vazio;
+    delete o.agua; delete o.idadeMet; delete o.ossea;
+  };
+  if (d.perfil) converter(d.perfil.bio, d.perfil.peso, '');
+  (d.medidas || []).forEach(x => converter(x, x.peso, null));
+  d.modelo = 2;
+  return d;
+}
+const abrirDados = d => Object.assign(estadoVazio(), migrar(d));
 let estado = carregar();
 const ui = { passo: 1, rascunho: null, editando: false, erros: {}, dia: null, filtro: { busca: '', grupo: 'todos', equip: 'todos', soIndicados: true } };
 
 function carregar() {
   try {
     if (DEMO) return dadosDemo();
-    return Object.assign(estadoVazio(), JSON.parse(localStorage.getItem(CHAVE)) || {});
+    if (NUVEM) return estadoVazio();                      // os dados chegam da conta, depois do login
+    return abrirDados(JSON.parse(localStorage.getItem(CHAVE)));
   } catch (e) { return estadoVazio(); }
 }
 function salvar() {
+  if (NUVEM) return salvarNuvem();
   try { localStorage.setItem(CHAVE, JSON.stringify(estado)); }
   catch (e) { toast('Não consegui salvar os dados neste navegador.'); }
 }
@@ -62,16 +104,16 @@ function dadosDemo() {
   const perfil = {
     nome: 'Visitante', sexo: 'M', nascimento: '1994-05-10', altura: 178, peso: 88.4, objetivo: 'auto', nivel: 1, dias: 4,
     rotina: 'sedentaria', enfase: 'equilibrado', equip: TODOS_EQUIP.slice(), restricoes: [], dieta: 'tradicional', refeicoes: 4,
-    bio: { gordura: 25.6, musculo: 35.8, agua: 53.1, visceral: 10, tmb: '', idadeMet: 36, ossea: 3.3 }
+    bio: { gordura: 25.6, visceral: 10, musculo: 35.8, tmb: 1845 }
   };
   const medidas = [
-    { data: '2026-08-20', peso: 92.0, gordura: 27.5, musculo: 36.0, agua: 52.0, visceral: 11 },
-    { data: '2026-09-18', peso: 90.6, gordura: 26.9, musculo: 35.9, agua: 52.4, visceral: 11 },
-    { data: '2026-10-22', peso: 89.3, gordura: 26.1, musculo: 35.9, agua: 52.8, visceral: 10 },
-    { data: '2026-11-24', peso: 88.4, gordura: 25.6, musculo: 35.8, agua: 53.1, visceral: 10 }
+    { data: '2026-08-20', peso: 92.0, gordura: 27.5, visceral: 11, musculo: 34.6, tmb: 1880 },
+    { data: '2026-09-18', peso: 90.6, gordura: 26.9, visceral: 11, musculo: 35.0, tmb: 1868 },
+    { data: '2026-10-22', peso: 89.3, gordura: 26.1, visceral: 10, musculo: 35.5, tmb: 1855 },
+    { data: '2026-11-24', peso: 88.4, gordura: 25.6, visceral: 10, musculo: 35.8, tmb: 1845 }
   ];
   const a = analisar(perfil);
-  return { perfil, ficha: gerarFicha(perfil, a.objetivo), medidas, sessoes: [{ data: '2026-11-23', dia: 'A', titulo: 'Superiores A', feitas: 18, total: 18, minutos: 52 }], sessao: null };
+  return { modelo: 2, perfil, ficha: gerarFicha(perfil, a.objetivo), medidas, sessoes: [{ data: '2026-11-23', dia: 'A', titulo: 'Superiores A', feitas: 18, total: 18, minutos: 52 }], sessao: null };
 }
 
 /* ───────── Roteamento e moldura ───────── */
@@ -79,33 +121,421 @@ const ROTAS = [
   ['painel', 'Painel'], ['ficha', 'Minha ficha'], ['exercicios', 'Exercícios'],
   ['alimentacao', 'Alimentação'], ['evolucao', 'Evolução'], ['perfil', 'Perfil']
 ];
-const rotaAtual = () => { const r = location.hash.replace(/^#\/?/, ''); return ROTAS.some(x => x[0] === r) ? r : 'painel'; };
+// "pessoas" (convites) não fica no menu: só o administrador chega nela, pelo Perfil
+const rotaAtual = () => { const r = location.hash.replace(/^#\/?/, ''); return ROTAS.some(x => x[0] === r) || (r === 'pessoas' && ehAdmin()) ? r : 'painel'; };
 
 function render() {
   const app = $('#app');
-  if (!estado.perfil || ui.editando) {
+  if (NUVEM && nuvem.fase !== 'pronto') {
     app.className = 'app sem-nav';
-    app.innerHTML = viewCadastro();
+    app.innerHTML = viewEntrada();
     return;
   }
   const rota = rotaAtual();
+  if (rota === 'pessoas' && !estado.perfil) {             // o administrador pode convidar antes de fazer o próprio cadastro
+    app.className = 'app sem-nav';
+    app.innerHTML = `<div class="cadastro">${viewPessoas()}</div>`;
+    return;
+  }
+  if (!estado.perfil || ui.editando) {
+    app.className = 'app sem-nav';
+    app.innerHTML = viewCadastro() + (NUVEM && !estado.perfil ? `<p class="conta-rodape mini suave">Conectado como ${esc(emailConta())}. <button class="link" data-acao="sair">Sair</button>${ehAdmin() ? ' · <a href="#/pessoas">Convidar pessoas</a>' : ''}</p>` : '');
+    return;
+  }
   app.className = 'app';
   app.innerHTML = `
     <nav class="lateral" aria-label="Seções">
       <div class="logo"><span class="logo-marca">${ic('exercicios')}</span>BioFicha</div>
-      ${ROTAS.map(([r, nome]) => `<a class="nav-item ${r === rota ? 'ativo' : ''}" href="#/${r}">${ic(r)}<span>${r === 'ficha' ? '<span class="so-largo">Minha </span>' : ''}${r === 'ficha' ? 'ficha' : nome}</span></a>`).join('')}
-      <div class="rodape mini suave">${DEMO ? 'Modo demonstração: dados de exemplo.' : 'Seus dados ficam salvos só neste navegador.'}</div>
+      ${ROTAS.map(([r, nome]) => `<a class="nav-item ${r === rota || (r === 'perfil' && rota === 'pessoas') ? 'ativo' : ''}" href="#/${r}">${ic(r)}<span>${r === 'ficha' ? '<span class="so-largo">Minha </span>' : ''}${r === 'ficha' ? 'ficha' : nome}</span></a>`).join('')}
+      <div class="rodape mini suave" id="situacao">${DEMO ? 'Modo demonstração: dados de exemplo.' : NUVEM ? textoSituacao() : 'Seus dados ficam salvos só neste navegador.'}</div>
     </nav>
     <main class="conteudo" id="conteudo">${VIEWS[rota]()}</main>`;
 }
-window.addEventListener('hashchange', () => { render(); window.scrollTo(0, 0); });
+window.addEventListener('hashchange', () => { if (rotaAtual() === 'pessoas') ui.convites = undefined; render(); window.scrollTo(0, 0); });
+
+/* ───────── Nuvem: conta e dados no Firebase (Auth + Firestore) ─────────
+   Cada pessoa tem um único documento, usuarios/<id da conta>, com o mesmo conteúdo que o modo local guarda no navegador.
+   O acesso é por convite: o administrador grava convites/<e-mail> e só quem tem convite (e e-mail confirmado) lê e grava
+   o próprio documento. Quem decide isso são as regras do banco (firestore.rules); a tela só acompanha. */
+const SDK = 'https://www.gstatic.com/firebasejs/10.14.1/firebase-';
+const ADMINS = typeof FIREBASE_ADMINS !== 'undefined' ? FIREBASE_ADMINS : [];
+const ehAdmin = () => NUVEM && !!nuvem.usuario && ADMINS.includes(nuvem.usuario.uid);
+const EMAIL_OK = /^\S+@\S+\.\S+$/;
+let fb = null;                                            // SDK do Firebase, baixado só no modo nuvem
+const emailConta = () => (nuvem.usuario && (nuvem.usuario.email || nuvem.usuario.displayName)) || '';
+const ERROS_CONTA = {
+  'auth/invalid-credential': 'E-mail ou senha incorretos.', 'auth/wrong-password': 'E-mail ou senha incorretos.',
+  'auth/user-not-found': 'E-mail ou senha incorretos.', 'auth/invalid-email': 'Confira o e-mail digitado.',
+  'auth/missing-password': 'Digite a senha.', 'auth/weak-password': 'A senha precisa ter pelo menos 6 caracteres.',
+  'auth/email-already-in-use': 'Já existe uma conta com este e-mail. Use "Entrar".',
+  'auth/too-many-requests': 'Muitas tentativas seguidas. Espere alguns minutos e tente de novo.',
+  'auth/network-request-failed': 'Sem conexão com a internet.',
+  'auth/operation-not-allowed': 'Esta forma de entrar não está ativada.',
+  'auth/unauthorized-domain': 'Este endereço não está autorizado para login.',
+  'auth/account-exists-with-different-credential': 'Este e-mail já tem conta com outra forma de entrar.'
+};
+
+async function iniciarNuvem() {
+  try {
+    const [app, auth, fs] = await Promise.all([import(SDK + 'app.js'), import(SDK + 'auth.js'), import(SDK + 'firestore.js')]);
+    const inst = app.initializeApp(CFG);
+    let db;
+    // Cópia local do Firestore: o que for marcado sem internet (no meio do treino) sobe quando a conexão voltar
+    try { db = fs.initializeFirestore(inst, { localCache: fs.persistentLocalCache({ tabManager: fs.persistentMultipleTabManager() }) }); }
+    catch (e) { db = fs.getFirestore(inst); }
+    fb = { app, auth, fs, db, au: auth.getAuth(inst) };
+    fb.au.languageCode = 'pt-BR';
+    auth.onAuthStateChanged(fb.au, u => {
+      const c = conviteLink; conviteLink = null;
+      // Chegou por um link de convite e não está conectado com essa conta: entra com a senha provisória do link
+      if (c && (!u || (u.email || '').toLowerCase() !== c.e)) return entrarPeloConvite(c);
+      aoMudarUsuario(u);
+    }, falhaNuvem);
+  } catch (e) { falhaNuvem(e); }
+}
+async function entrarPeloConvite(c) {
+  nuvem.email = c.e;
+  try {
+    sessionStorage.setItem('bioficha.criarSenha', '1');
+    await fb.auth.signInWithEmailAndPassword(fb.au, c.e, c.c);       // dá certo: o Firebase avisa de novo e aoMudarUsuario abre a conta
+  } catch (e) {
+    sessionStorage.removeItem('bioficha.criarSenha');
+    nuvem.erro = ['auth/invalid-credential', 'auth/wrong-password', 'auth/user-not-found'].includes(e.code)
+      ? 'Este link de convite já foi usado ou não vale mais. Entre com seu e-mail e senha, ou peça um novo convite.'
+      : ERROS_CONTA[e.code] || 'Não consegui abrir o convite. Tente de novo.';
+    aoMudarUsuario(fb.au.currentUser);
+  }
+}
+function falhaNuvem(e) {
+  if (nuvem.saindo) return;
+  console.warn('nuvem', e);
+  nuvem.fase = 'falha';
+  nuvem.erro = navigator.onLine ? 'Não consegui conectar à sua conta. Tente de novo em instantes.' : 'Sem conexão com a internet. Conecte-se e tente de novo.';
+  render();
+}
+function aoMudarUsuario(u) {
+  if (nuvem.parar) { nuvem.parar(); nuvem.parar = null; }
+  const vez = nuvem.vez = (nuvem.vez || 0) + 1;            // respostas atrasadas de uma abertura anterior são ignoradas
+  nuvem.usuario = u; nuvem.ocupado = false; nuvem.pendente = false;
+  // Ao sair, a página é recarregada logo em seguida: não mostra o formulário de login nesse intervalo
+  if (!u) { estado = estadoVazio(); nuvem.ref = null; nuvem.fase = nuvem.saindo ? 'carregando' : 'login'; return render(); }
+  nuvem.fase = 'baixando'; nuvem.erro = ''; nuvem.aviso = ''; render();
+  nuvem.ref = fb.fs.doc(fb.db, 'usuarios', u.uid);
+  let primeira = true;
+  nuvem.parar = fb.fs.onSnapshot(nuvem.ref, { includeMetadataChanges: true }, snap => {
+    const m = snap.metadata;
+    nuvem.pendente = m.hasPendingWrites;
+    if (primeira) {
+      // Sem internet e sem cópia neste aparelho: espera o servidor, para não abrir um cadastro novo por cima dos dados da conta
+      if (!snap.exists() && m.fromCache) return;
+      primeira = false;
+      if (snap.exists()) estado = abrirDados(snap.data());
+      nuvem.reconferiu = false;
+      conferirConvite(u).then(precisaSenha => {
+        if (vez !== nuvem.vez || nuvem.fase !== 'baixando') return;
+        nuvem.fase = precisaSenha ? 'criar-senha' : 'pronto'; render();
+      });
+      return;
+    }
+    if (!m.hasPendingWrites && !m.fromCache) {
+      if (!snap.exists()) {
+        if (estado.perfil && !nuvem.timer) { estado = estadoVazio(); ui.rascunho = null; ui.editando = false; ui.passo = 1; render(); }   // apagado em outro aparelho
+      } else if ((snap.data().atualizadoEm || 0) > (estado.atualizadoEm || 0)) {
+        estado = abrirDados(snap.data()); render(); toast('Dados atualizados de outro aparelho.');
+      }
+    }
+    atualizarSituacao();
+  }, async e => {
+    if (!e || e.code !== 'permission-denied') return falhaNuvem(e);
+    // O banco recusou: falta confirmar o e-mail ou a conta não tem convite (ou o convite foi retirado)
+    nuvem.parar = null; nuvem.ref = null; estado = estadoVazio();
+    let fase = u.emailVerified || ehAdmin() ? 'sem-convite' : 'confirmar';
+    if (fase === 'confirmar' && u.email) {
+      // Acesso removido pelo administrador: confirmar o e-mail não adiantaria
+      try { const s = await fb.fs.getDoc(fb.fs.doc(fb.db, 'convites', u.email.toLowerCase())); if (s.exists() && s.data().removido) fase = 'sem-convite'; }
+      catch (e2) { /* sem convite legível: fica valendo a confirmação do e-mail */ }
+    }
+    if (vez !== nuvem.vez) return;
+    nuvem.fase = fase;
+    nuvem.erro = !nuvem.reconferiu ? '' : nuvem.fase === 'confirmar'
+      ? 'O e-mail ainda não aparece como confirmado. Abra o link que chegou na sua caixa de entrada e tente de novo.'
+      : 'Ainda não há convite para esta conta.';
+    nuvem.reconferiu = false; nuvem.ocupado = false;
+    render();
+  });
+}
+// Antes de abrir a tela, olha o convite da pessoa. Responde se ela ainda precisa criar a própria senha
+// (entrou pelo link do convite e continua com a senha provisória) e marca no convite quando ela entrou.
+async function conferirConvite(u) {
+  const pelaSessao = sessionStorage.getItem('bioficha.criarSenha') === '1';
+  if (ehAdmin() || !u.email) return pelaSessao;
+  try {
+    const r = fb.fs.doc(fb.db, 'convites', u.email.toLowerCase()), s = await fb.fs.getDoc(r);
+    if (!s.exists()) return pelaSessao;
+    const d = s.data();
+    // Quem já confirmou o e-mail (criou a senha pelo link enviado por e-mail) não usa mais a senha provisória
+    const dispensa = u.emailVerified;
+    const precisa = !!d.chave && !dispensa;
+    const muda = {};
+    if (d.chave && dispensa) muda.chave = fb.fs.deleteField();
+    if (!d.entrouEm && !precisa) muda.entrouEm = Date.now();
+    if (Object.keys(muda).length) fb.fs.updateDoc(r, muda).catch(() => {});
+    if (!precisa) sessionStorage.removeItem('bioficha.criarSenha');
+    return precisa;
+  } catch (e) { return pelaSessao; }
+}
+async function salvarSenhaNova() {
+  const campo = $('#n-senha'), senha = campo ? campo.value : '', u = fb.au.currentUser;
+  nuvem.erro = ''; nuvem.aviso = '';
+  if (senha.length < 6) { nuvem.erro = 'Escolha uma senha com pelo menos 6 caracteres.'; render(); const c = $('#n-senha'); if (c) c.focus(); return; }
+  nuvem.ocupado = true; render();
+  try {
+    await fb.auth.updatePassword(u, senha);
+    sessionStorage.removeItem('bioficha.criarSenha');
+    if (!ehAdmin() && u.email) {
+      await fb.fs.updateDoc(fb.fs.doc(fb.db, 'convites', u.email.toLowerCase()), { chave: fb.fs.deleteField(), entrouEm: Date.now() }).catch(() => {});
+    }
+    nuvem.ocupado = false; nuvem.fase = 'pronto'; render(); toast('Senha criada. Bom treino!');
+  } catch (e) {
+    console.warn('senha', e);
+    nuvem.ocupado = false;
+    nuvem.erro = e.code === 'auth/requires-recent-login' ? 'Por segurança, abra de novo o link do convite e crie a senha em seguida.'
+      : ERROS_CONTA[e.code] || 'Não consegui salvar a senha. Tente de novo.';
+    render();
+  }
+}
+// Atualiza a situação da conta (e-mail confirmado, convite) e tenta abrir os dados de novo
+async function reconferirConta() {
+  const u = fb.au.currentUser; if (!u) return;
+  nuvem.ocupado = true; nuvem.erro = ''; nuvem.aviso = ''; render();
+  try { await fb.auth.reload(u); await fb.auth.getIdToken(u, true); }
+  catch (e) { nuvem.ocupado = false; nuvem.erro = ERROS_CONTA[e.code] || 'Não consegui conferir agora. Tente de novo.'; return render(); }
+  nuvem.reconferiu = true;
+  aoMudarUsuario(fb.au.currentUser);
+}
+function salvarNuvem() {
+  if (!nuvem.ref) return;
+  estado.atualizadoEm = Date.now();
+  clearTimeout(nuvem.timer);
+  nuvem.timer = setTimeout(enviarNuvem, 700);              // junta toques seguidos (séries, cargas) em uma gravação só
+  atualizarSituacao();
+}
+function enviarNuvem() {
+  clearTimeout(nuvem.timer); nuvem.timer = null;
+  if (!nuvem.ref) return;
+  fb.fs.setDoc(nuvem.ref, JSON.parse(JSON.stringify(estado)))
+    .catch(e => { console.warn('salvar', e); toast('Não consegui salvar na sua conta. Tente de novo.'); });
+}
+function textoSituacao() {
+  if (!navigator.onLine) return 'Sem conexão. O que você mudar sobe para a sua conta quando a internet voltar.';
+  return nuvem.pendente || nuvem.timer ? 'Salvando na sua conta…' : 'Salvo na sua conta.';
+}
+function atualizarSituacao() { const s = $('#situacao'); if (s && NUVEM) s.textContent = textoSituacao(); }
+if (NUVEM) {
+  ['online', 'offline'].forEach(t => window.addEventListener(t, () => { nuvem.fase === 'pronto' ? atualizarSituacao() : render(); }));
+  // Ao fechar ou trocar de aba, grava na hora o que estava esperando
+  window.addEventListener('pagehide', () => { if (nuvem.timer) enviarNuvem(); });
+  document.addEventListener('visibilitychange', () => { if (document.hidden && nuvem.timer) enviarNuvem(); });
+}
+
+function viewEntrada() {
+  const f = nuvem.fase, modo = nuvem.modo;
+  const logo = `<div class="logo"><span class="logo-marca">${ic('exercicios')}</span>BioFicha</div>`;
+  if (f === 'falha') return `<div class="cadastro conta">${logo}<h1>Sem acesso à conta</h1><p class="aviso">${esc(nuvem.erro)}</p>
+    <div class="acoes"><button class="btn primario" data-acao="recarregar">Tentar de novo</button></div></div>`;
+  const trava = nuvem.ocupado ? 'disabled' : '';
+  const recados = `${nuvem.erro ? `<p class="aviso erro" role="alert">${esc(nuvem.erro)}</p>` : ''}${nuvem.aviso ? `<p class="aviso" role="status">${esc(nuvem.aviso)}</p>` : ''}`;
+  const conectado = `<p class="mini suave quebra-email">Conectado como ${esc(emailConta())}. <button class="link" data-acao="sair">Sair</button></p>`;
+  if (f === 'confirmar') return `<div class="cadastro conta">${logo}<h1>Confirme seu e-mail</h1>
+    <p class="suave quebra-email">Para proteger seus dados, precisamos confirmar que <b>${esc(emailConta())}</b> é seu. Peça o link, abra o e-mail que chegar e depois volte aqui.</p>
+    ${recados}
+    <button class="btn primario grande largo" data-acao="enviar-confirmacao" ${trava}>Enviar link de confirmação</button>
+    <button class="btn grande largo" data-acao="reconferir" ${trava}>${nuvem.ocupado ? 'Aguarde…' : 'Já confirmei'}</button>${conectado}</div>`;
+  if (f === 'sem-convite') return `<div class="cadastro conta">${logo}<h1>Acesso por convite</h1>
+    <p class="suave quebra-email">A conta <b>${esc(emailConta())}</b> não está com o acesso liberado no BioFicha. Peça o convite a quem administra o site, usando este mesmo e-mail.</p>
+    ${recados}
+    <button class="btn primario grande largo" data-acao="reconferir" ${trava}>${nuvem.ocupado ? 'Aguarde…' : 'Tentar de novo'}</button>${conectado}</div>`;
+  if (f === 'criar-senha') return `<div class="cadastro conta">${logo}<h1>Crie sua senha</h1>
+    <p class="suave quebra-email">Bem-vindo ao BioFicha. Escolha a senha que você vai usar para entrar com o e-mail <b>${esc(emailConta())}</b>.</p>
+    <form id="form-senha" class="pilha" novalidate>
+      <label class="campo"><span>Nova senha</span><input class="entrada" id="n-senha" type="password" autocomplete="new-password"><small>Pelo menos 6 caracteres.</small></label>
+      ${recados}
+      <button class="btn primario grande largo" type="submit" ${trava}>${nuvem.ocupado ? 'Aguarde…' : 'Salvar senha e entrar'}</button>
+    </form>${conectado}</div>`;
+  if (f !== 'login') return `<div class="cadastro conta">${logo}<p class="suave" role="status">${f === 'baixando' ? 'Carregando seus dados…' : 'Carregando…'}</p>
+    ${navigator.onLine ? '' : '<p class="aviso">Sem conexão com a internet. Assim que ela voltar, seus dados aparecem.</p>'}
+    ${f === 'baixando' ? conectado : ''}</div>`;
+  const titulo = { entrar: 'Entrar', recuperar: 'Criar ou trocar a senha' }[modo];
+  const texto = {
+    entrar: 'O acesso é por convite. Se você recebeu um link de convite, abra o link para criar sua senha. Se já criou, entre aqui.',
+    recuperar: 'Digite o e-mail do seu convite. Você recebe um link para criar ou trocar a senha (olhe também a caixa de spam).'
+  }[modo];
+  return `<div class="cadastro conta">${logo}
+    <h1>${titulo}</h1><p class="suave">${texto}</p>
+    <form id="form-conta" class="pilha" novalidate>
+      <label class="campo"><span>E-mail</span><input class="entrada" id="c-email" type="email" inputmode="email" autocomplete="email" value="${esc(nuvem.email || '')}" placeholder="voce@exemplo.com"></label>
+      ${modo === 'recuperar' ? '' : '<label class="campo"><span>Senha</span><input class="entrada" id="c-senha" type="password" autocomplete="current-password"></label>'}
+      ${recados}
+      <button class="btn primario grande largo" type="submit" ${trava}>${nuvem.ocupado ? 'Aguarde…' : { entrar: 'Entrar', recuperar: 'Enviar link' }[modo]}</button>
+    </form>
+    <p class="pequeno suave conta-links">${modo === 'entrar'
+      ? 'Esqueceu a senha? <button class="link" data-acao="modo-conta" data-valor="recuperar">Receber link por e-mail</button>'
+      : '<button class="link" data-acao="modo-conta" data-valor="entrar">Voltar para entrar</button>'}</p></div>`;
+}
+async function enviarConta() {
+  const email = ($('#c-email').value || '').trim(), senha = $('#c-senha') ? $('#c-senha').value : '';
+  const modo = nuvem.modo;
+  let foco = '';
+  nuvem.email = email; nuvem.erro = ''; nuvem.aviso = '';
+  if (!EMAIL_OK.test(email)) { nuvem.erro = 'Confira o e-mail digitado.'; foco = '#c-email'; }
+  else if (modo === 'entrar' && !senha) { nuvem.erro = 'Digite a senha.'; foco = '#c-senha'; }
+  if (nuvem.erro) { render(); const c = $(foco); if (c) c.focus(); return; }
+  nuvem.ocupado = true; render();
+  try {
+    if (modo === 'entrar') { await fb.auth.signInWithEmailAndPassword(fb.au, email, senha); return; }   // quem troca de tela é aoMudarUsuario
+    await enviarLinkSenha(email);
+    nuvem.modo = 'entrar';
+    nuvem.aviso = 'Se este e-mail tiver sido convidado, o link para criar a senha já foi enviado. Olhe também a caixa de spam.';
+  } catch (e) { nuvem.erro = ERROS_CONTA[e.code] || 'Não consegui concluir. Tente de novo.'; }
+  nuvem.ocupado = false;
+  if (nuvem.fase === 'login') render();
+}
+
+// Os e-mails do Firebase trazem um botão para voltar ao site. Se o projeto recusar o endereço, o e-mail vai sem o botão.
+async function comRetorno(enviar) {
+  try { await enviar({ url: 'https://' + CFG.projectId + '.web.app/' }); }
+  catch (e) { if (e.code !== 'auth/unauthorized-continue-uri') throw e; await enviar(undefined); }
+}
+const enviarLinkSenha = email => comRetorno(o => fb.auth.sendPasswordResetEmail(fb.au, email, o));
+
+/* ───────── Pessoas: convites (só o administrador) ───────── */
+async function carregarConvites() {
+  ui.convites = null;                                     // null = carregando
+  try {
+    const q = await fb.fs.getDocs(fb.fs.collection(fb.db, 'convites'));
+    ui.convites = q.docs.map(d => d.data()).sort((a, b) => (b.criadoEm || 0) - (a.criadoEm || 0));
+  } catch (e) { console.warn('convites', e); ui.convites = []; toast('Não consegui carregar a lista de convidados.'); }
+  if (rotaAtual() === 'pessoas') render();
+}
+// Endereço e texto do convite. O link leva o e-mail e a senha provisória; só existe enquanto a pessoa não criou a própria senha.
+const linkConvite = p => location.origin + '/#convite=' + b64url(JSON.stringify({ e: p.email, c: p.chave }));
+const textoConvite = p => `${p.nome ? 'Oi, ' + p.nome.split(' ')[0] + '!' : 'Oi!'} Te convidei para o BioFicha, o app de treino e alimentação. ` +
+  `Abra este link, crie sua senha e pronto:\n${linkConvite(p)}\n\nO link é só seu. Depois é só entrar com o e-mail ${p.email} e a senha que você criar.`;
+async function copiar(texto) {
+  try { await navigator.clipboard.writeText(texto); return true; }
+  catch (e) {                                              // navegador sem permissão para a área de transferência
+    const t = document.createElement('textarea');
+    t.value = texto; t.style.position = 'fixed'; t.style.opacity = '0'; document.body.appendChild(t); t.select();
+    let ok = false; try { ok = document.execCommand('copy'); } catch (e2) { /* sem cópia automática */ }
+    t.remove(); return ok;
+  }
+}
+function viewPessoas() {
+  if (ui.convites === undefined) carregarConvites();
+  if (!ui.convite) ui.convite = { email: '', nome: '', erro: '', ocupado: false };
+  const c = ui.convite, lista = ui.convites;
+  const dia = ms => dataBR(new Date(ms - new Date(ms).getTimezoneOffset() * 60000).toISOString());
+  const situacao = p => (p.removido ? selo('alerta', 'Acesso removido')
+    : p.entrouEm ? selo('bom', 'Entrou em ' + dia(p.entrouEm))
+    : p.chave ? selo('atencao', 'Falta abrir o link')
+    : selo('info', 'Convidado em ' + dia(p.criadoEm || Date.now())));
+  const botoes = p => (p.removido
+    ? `<button class="btn" data-acao="devolver-acesso" data-valor="${esc(p.email)}">Devolver acesso</button>
+       <button class="btn perigo" data-acao="excluir-convite" data-valor="${esc(p.email)}">Excluir</button>`
+    : `${p.chave ? `<button class="btn primario" data-acao="copiar-convite" data-valor="${esc(p.email)}">Copiar convite</button>` : ''}
+       <button class="btn" data-acao="reenviar-convite" data-valor="${esc(p.email)}">Enviar e-mail</button>
+       <button class="btn perigo" data-acao="remover-convite" data-valor="${esc(p.email)}">Remover</button>`);
+  const linhas = (lista || []).map(p => `<tr>
+      <td><b>${esc(p.nome || p.email)}</b>${p.nome ? `<br><span class="suave">${esc(p.email)}</span>` : ''}</td>
+      <td>${situacao(p)}</td>
+      <td class="acoes-linha">${botoes(p)}</td></tr>`).join('');
+  const novo = ui.conviteNovo && (lista || []).find(p => p.email === ui.conviteNovo && p.chave && !p.removido);
+  return `
+    <div class="cabecalho"><div><h1>Pessoas</h1><p class="suave">Só entra no BioFicha quem você convidar aqui. Cada pessoa vê apenas os próprios dados.</p></div>
+      <div class="acoes"><a class="btn" href="#/${estado.perfil ? 'perfil' : ''}">${estado.perfil ? 'Voltar ao Perfil' : 'Voltar ao cadastro'}</a></div></div>
+    <div class="pilha">
+      <div class="card"><h2>Convidar</h2>
+        <form id="form-convite" class="convite" novalidate>
+          <label class="campo"><span>E-mail da pessoa</span><input class="entrada" id="cv-email" type="email" inputmode="email" autocomplete="off" value="${esc(c.email)}" placeholder="pessoa@exemplo.com"></label>
+          <label class="campo"><span>Nome (opcional)</span><input class="entrada" id="cv-nome" type="text" autocomplete="off" maxlength="60" value="${esc(c.nome)}"></label>
+          <button class="btn primario" type="submit" ${c.ocupado ? 'disabled' : ''}>${c.ocupado ? 'Criando…' : 'Criar convite'}</button>
+        </form>
+        ${c.erro ? `<p class="aviso erro" role="alert" style="margin-top:12px">${esc(c.erro)}</p>` : ''}
+        <p class="mini suave" style="margin-top:12px">O convite vira um link pessoal. Você copia e manda para a pessoa (WhatsApp, por exemplo); ela abre, cria a senha e entra. Um e-mail automático também é enviado, mas ele costuma cair no spam.</p></div>
+      ${novo ? `<div class="card destaque" id="convite-novo"><h2>Convite pronto para ${esc(novo.nome || novo.email)}</h2>
+        <p class="pequeno">Mande esta mensagem para a pessoa. O link é pessoal: quem abrir entra na conta dela.</p>
+        <textarea class="entrada mensagem-convite" id="msg-convite" readonly rows="6">${esc(textoConvite(novo))}</textarea>
+        <div class="acoes" style="margin-top:12px"><button class="btn primario" data-acao="copiar-convite" data-valor="${esc(novo.email)}">Copiar convite</button></div></div>` : ''}
+      <div class="card"><h2>Convidados</h2>
+        ${lista === null || lista === undefined ? '<p class="suave">Carregando…</p>'
+          : !lista.length ? '<p class="suave">Ninguém foi convidado ainda.</p>'
+          : `<div class="rolagem-x"><table class="tabela quebra convidados"><tbody>${linhas}</tbody></table></div>
+             <p class="mini suave" style="margin-top:12px">"Copiar convite" aparece até a pessoa criar a senha dela. Remover tira o acesso na hora e guarda os dados; "Devolver acesso" traz tudo de volta.</p>`}</div>
+    </div>`;
+}
+// Cria a conta do convidado numa segunda ligação com o Firebase, só em memória:
+// criar na ligação principal trocaria o usuário conectado (o administrador) pelo convidado.
+// Devolve o id da conta e a senha provisória que vai no link; ou nada, se o e-mail já tinha conta.
+async function criarContaConvidada(email) {
+  const sec = fb.app.initializeApp(CFG, 'convite-' + Date.now());
+  try {
+    const a2 = fb.auth.initializeAuth(sec, { persistence: fb.auth.inMemoryPersistence });
+    const chave = b64url(String.fromCharCode(...crypto.getRandomValues(new Uint8Array(24))));
+    const r = await fb.auth.createUserWithEmailAndPassword(a2, email, chave);
+    const uid = r.user.uid;
+    await fb.auth.signOut(a2);
+    return { uid, chave };
+  } catch (e) { if (e.code !== 'auth/email-already-in-use') throw e; return null; }
+  finally { fb.app.deleteApp(sec).catch(() => {}); }
+}
+async function enviarConvite() {
+  const c = ui.convite, email = (c.email || '').trim().toLowerCase(), nome = (c.nome || '').trim().slice(0, 60);
+  c.erro = '';
+  if (!EMAIL_OK.test(email)) c.erro = 'Confira o e-mail digitado.';
+  else if (!navigator.onLine) c.erro = 'Sem conexão com a internet.';
+  if (c.erro) { render(); const i = $('#cv-email'); if (i) i.focus(); return; }
+  c.ocupado = true; render();
+  try {
+    const ref = fb.fs.doc(fb.db, 'convites', email);
+    await fb.fs.setDoc(ref, { email, nome, criadoEm: Date.now(), removido: false }, { merge: true });
+    const conta = await criarContaConvidada(email);
+    if (conta) await fb.fs.updateDoc(ref, conta);
+    // O e-mail automático é um extra: se falhar ou cair no spam, o link copiado resolve
+    let comEmail = true;
+    try { await enviarLinkSenha(email); } catch (e) { console.warn('e-mail do convite', e); comEmail = false; }
+    ui.convite = null; ui.conviteNovo = email;
+    toast(conta ? 'Convite criado. Copie e mande para a pessoa.'
+      : comEmail ? 'Este e-mail já tinha conta: acesso liberado e e-mail enviado.' : 'Este e-mail já tinha conta: acesso liberado.');
+    await carregarConvites();
+  } catch (e) {
+    console.warn('convite', e);
+    c.ocupado = false; c.erro = ERROS_CONTA[e.code] || 'Não consegui criar o convite. Tente de novo.';
+    render();
+  }
+}
+async function sairDaConta() {
+  const tinha = !!nuvem.timer || nuvem.pendente;
+  if (nuvem.timer) enviarNuvem();
+  if (tinha && !navigator.onLine) {
+    if (!confirm('Há alterações que ainda não subiram para a sua conta por falta de internet.\n\nSe sair agora, elas se perdem. Sair mesmo assim?')) return;
+  } else if (tinha) await Promise.race([fb.fs.waitForPendingWrites(fb.db), new Promise(r => setTimeout(r, 4000))]);
+  nuvem.saindo = true;
+  try {
+    if (nuvem.parar) { nuvem.parar(); nuvem.parar = null; }
+    await fb.auth.signOut(fb.au);
+    await fb.fs.terminate(fb.db);
+    await fb.fs.clearIndexedDbPersistence(fb.db);          // não deixa dados de saúde guardados neste aparelho
+  } catch (e) { console.warn('sair', e); }
+  history.replaceState(null, '', location.pathname);
+  location.reload();
+}
 
 /* ───────── Cadastro ───────── */
 function rascunhoNovo() {
   return {
     nome: '', sexo: 'M', nascimento: '', altura: '', peso: '', objetivo: 'auto', nivel: 1, dias: 3, rotina: 'sedentaria', enfase: 'equilibrado',
     equip: TODOS_EQUIP.slice(), restricoes: [], dieta: 'tradicional', refeicoes: 4,
-    bio: { gordura: '', musculo: '', agua: '', visceral: '', tmb: '', idadeMet: '', ossea: '' }
+    bio: { gordura: '', visceral: '', musculo: '', tmb: '' }
   };
 }
 function campo(rotulo, chave, o) {
@@ -124,6 +554,7 @@ const marcar = (chave, valor, texto) => `<button type="button" class="marcar ${u
 function viewCadastro() {
   if (!ui.rascunho) ui.rascunho = estado.perfil ? JSON.parse(JSON.stringify(estado.perfil)) : rascunhoNovo();
   const r = ui.rascunho, p = ui.passo;
+  const pesoR = num(r.peso), alturaR = num(r.altura), imcRascunho = pesoR && alturaR ? pesoR / Math.pow(alturaR / 100, 2) : null;
   const titulos = ['Sobre você', 'Bioimpedância', 'Objetivo e rotina', 'Equipamentos e cuidados'];
   let corpo = '';
   if (p === 1) {
@@ -141,17 +572,15 @@ function viewCadastro() {
       </div></div>`;
   } else if (p === 2) {
     corpo = `
-      <p class="suave">Copie os valores do laudo ou da balança de bioimpedância. Tudo aqui é opcional: preencha o que tiver e deixe o resto em branco.</p>
+      <p class="suave">Copie os números que a balança de bioimpedância mostra (a ordem é a mesma das balanças Omron). Tudo aqui é opcional: preencha o que tiver e deixe o resto em branco.</p>
       <div class="bloco"><div class="grade-campos">
-        ${campo('Percentual de gordura', 'bio.gordura', { un: '%', exemplo: '22,5', ajuda: 'O dado mais importante do exame.' })}
-        ${campo('Massa muscular', 'bio.musculo', { un: 'kg', exemplo: '34,0', ajuda: 'Massa muscular (esquelética ou total).' })}
-        ${campo('Água corporal', 'bio.agua', { un: '%', exemplo: '55' })}
-        ${campo('Gordura visceral', 'bio.visceral', { un: 'nível', exemplo: '8', modo: 'numeric', ajuda: 'Número de 1 a 59 informado pela balança.' })}
-        ${campo('Metabolismo basal', 'bio.tmb', { un: 'kcal', exemplo: '1750', modo: 'numeric', ajuda: 'Se não tiver, eu calculo.' })}
-        ${campo('Idade metabólica', 'bio.idadeMet', { un: 'anos', exemplo: '30', modo: 'numeric' })}
-        ${campo('Massa óssea', 'bio.ossea', { un: 'kg', exemplo: '3,2' })}
-      </div></div>
-      <p class="aviso" style="margin-top:20px">Não fez bioimpedância? Pode avançar. Eu estimo a gordura pelo IMC e pela idade, e você atualiza depois em Evolução.</p>`;
+        ${campo('Gordura corporal', 'bio.gordura', { un: '%', exemplo: '22,5', ajuda: 'O dado mais importante da medição.' })}
+        ${campo('Gordura abdominal (visceral)', 'bio.visceral', { un: 'nível', exemplo: '8', modo: 'numeric', ajuda: 'Nível de 1 a 30 mostrado pela balança.' })}
+        ${campo('Músculo esquelético', 'bio.musculo', { un: '%', exemplo: '34,0', ajuda: 'Percentual do peso, como aparece na balança.' })}
+        ${campo('Metabolismo em repouso', 'bio.tmb', { un: 'kcal', exemplo: '1750', modo: 'numeric', ajuda: 'Se não tiver, eu calculo.' })}
+        <label class="campo"><span>IMC</span><div class="com-unidade"><input class="entrada calculado" value="${imcRascunho === null ? '–' : n1(imcRascunho)}" readonly tabindex="-1" aria-describedby="imc-ajuda"><i>kg/m²</i></div>
+          <small id="imc-ajuda">Calculado com o peso e a altura do passo anterior. É o mesmo número da balança.</small></label>
+      </div></div>`;
   } else if (p === 3) {
     const a = analisar(r);
     corpo = `
@@ -213,13 +642,10 @@ function validarPasso(p) {
     faixa('peso', 30, 300, 'Informe o peso em kg, entre 30 e 300.', true);
   }
   if (p === 2) {
-    faixa('bio.gordura', 3, 65, 'O percentual de gordura costuma ficar entre 3 e 65.');
-    faixa('bio.musculo', 10, num(r.peso) || 150, 'A massa muscular precisa ser menor que o seu peso.');
-    faixa('bio.agua', 30, 80, 'A água corporal costuma ficar entre 30% e 80%.');
-    faixa('bio.visceral', 1, 59, 'O nível de gordura visceral vai de 1 a 59.');
-    faixa('bio.tmb', 800, 4000, 'O metabolismo basal costuma ficar entre 800 e 4000 kcal.');
-    faixa('bio.idadeMet', 10, 100, 'Informe uma idade entre 10 e 100.');
-    faixa('bio.ossea', 1, 6, 'A massa óssea costuma ficar entre 1 e 6 kg.');
+    faixa('bio.gordura', 3, 65, 'A gordura corporal costuma ficar entre 3% e 65%.');
+    faixa('bio.visceral', 1, 30, 'O nível de gordura abdominal vai de 1 a 30.');
+    faixa('bio.musculo', 5, 60, 'O músculo esquelético é um percentual do peso, entre 5% e 60%.');
+    faixa('bio.tmb', 800, 4000, 'O metabolismo em repouso costuma ficar entre 800 e 4000 kcal.');
   }
   ui.erros = e;
   return !Object.keys(e).length;
@@ -241,7 +667,7 @@ function concluirCadastro() {
   } else {
     const ultima = estado.medidas[estado.medidas.length - 1];
     const nova = medidaDoPerfil(r, hojeISO());
-    if (!ultima || ['peso', 'gordura', 'musculo', 'agua', 'visceral'].some(k => ultima[k] !== nova[k])) registrarMedida(nova);
+    if (!ultima || CAMPOS_MEDIDA.some(k => ultima[k] !== nova[k])) registrarMedida(nova);
     if (mudouTreino && confirm('Seu perfil de treino mudou. Quer que eu monte uma nova ficha recomendada?\n\nA ficha atual será substituída.'))
       estado.ficha = gerarFicha(r, a.objetivo);
   }
@@ -251,9 +677,10 @@ function concluirCadastro() {
   render(); window.scrollTo(0, 0);
   toast(antigo ? 'Cadastro atualizado.' : 'Plano montado. Bom treino!');
 }
+const CAMPOS_MEDIDA = ['peso', 'gordura', 'visceral', 'musculo', 'tmb'];
 function medidaDoPerfil(p, data) {
   const v = k => { const x = num(p.bio[k]); return x === null ? null : x; };
-  return { data, peso: num(p.peso), gordura: v('gordura'), musculo: v('musculo'), agua: v('agua'), visceral: v('visceral') };
+  return { data, peso: num(p.peso), gordura: v('gordura'), visceral: v('visceral'), musculo: v('musculo'), tmb: v('tmb') };
 }
 function registrarMedida(m) {
   estado.medidas = estado.medidas.filter(x => x.data !== m.data).concat([m]).sort((a, b) => a.data.localeCompare(b.data));
@@ -312,14 +739,13 @@ function viewPainel() {
 
     <div class="secao"><h2>Seus números</h2>
       <div class="tiles">
-        ${tile('IMC', n1(a.imc), '', selo(a.imcClasse.nivel, a.imcClasse.rotulo))}
         ${tile('Gordura corporal' + (a.gorduraMedida ? '' : ' (estimada)'), n1(a.gordura), '%', selo(a.gorduraClasse.nivel, a.gorduraClasse.rotulo))}
+        ${a.visceral !== null ? tile('Gordura abdominal', n0(a.visceral), 'nível', selo(a.visceralClasse.nivel, a.visceralClasse.rotulo)) : ''}
+        ${a.musculo !== null ? tile('Músculo esquelético', n1(a.musculo), '%', selo(a.musculoClasse.nivel, a.musculoClasse.rotulo)) : ''}
+        ${tile('Metabolismo em repouso', n0(a.tmb), 'kcal', `<span class="mini suave">${a.tmbFonte}</span>`)}
+        ${tile('IMC', n1(a.imc), '', selo(a.imcClasse.nivel, a.imcClasse.rotulo))}
         ${tile('Massa magra', n1(a.massaMagra), 'kg', `<span class="mini suave">FFMI ${n1(a.ffmi)}</span>`)}
-        ${tile('Metabolismo basal', n0(a.tmb), 'kcal', `<span class="mini suave">${a.tmbFonte}</span>`)}
         ${tile('Gasto diário', n0(a.gastoDiario), 'kcal', `<span class="mini suave">com ${a.dias} treinos por semana</span>`)}
-        ${a.visceral !== null ? tile('Gordura visceral', n0(a.visceral), 'nível', selo(a.visceralClasse.nivel, a.visceralClasse.rotulo)) : ''}
-        ${a.agua !== null ? tile('Água corporal', n1(a.agua), '%', selo(a.aguaClasse.nivel, a.aguaClasse.rotulo)) : ''}
-        ${a.musculo !== null ? tile('Massa muscular', n1(a.musculo), 'kg', a.musculoClasse ? selo(a.musculoClasse.nivel, a.musculoClasse.rotulo) : `<span class="mini suave">${n0(a.musculoPct)}% do peso</span>`) : ''}
       </div>
     </div>
 
@@ -331,7 +757,7 @@ function viewPainel() {
         <div class="legenda"><span><i style="background:var(--dado-magra)"></i>Massa magra · ${n1(a.massaMagra)} kg</span><span><i style="background:var(--dado-gordura)"></i>Gordura · ${n1(a.massaGorda)} kg</span></div>
         <h3 style="margin-top:22px">Onde você está na faixa de gordura</h3>
         ${escalaGordura(a)}
-        <p class="mini suave" style="margin-top:12px">Faixas de referência para ${a.sexo === 'F' ? 'mulheres' : 'homens'} adultos.</p>
+        <p class="mini suave" style="margin-top:12px">Faixas de referência para ${a.sexo === 'F' ? 'mulheres' : 'homens'} de ${a.idade < 40 ? 'até 39' : a.idade < 60 ? '40 a 59' : '60 ou mais'} anos, as mesmas das balanças Omron.</p>
       </div>
       <div class="card"><h2>O que seus números dizem</h2>
         <ul class="pontos">${a.pontos.map(x => `<li class="${x.tipo}"><span class="marca-p">${ic(iconePonto[x.tipo], 'p')}</span><span>${esc(x.texto)}</span></li>`).join('')}</ul>
@@ -520,7 +946,7 @@ function viewAlimentacao() {
     <div class="secao duas">
       <div class="card"><h2>Para dar certo</h2><ul class="lista">${pl.dicas.map(d => `<li>${esc(d)}</li>`).join('')}</ul></div>
       <div class="card"><h2>Como os números foram calculados</h2><ul class="lista">
-        <li>Metabolismo basal de ${n0(a.tmb)} kcal, ${a.tmbFonte}.</li>
+        <li>Metabolismo em repouso de ${n0(a.tmb)} kcal, ${a.tmbFonte}.</li>
         <li>Gasto diário de ${n0(a.gastoDiario)} kcal, considerando sua rotina e ${a.dias} treinos por semana.</li>
         <li>Proteína: ${n1(pl.protKg)} g por kg ${a.gorduraAlta ? `de peso de referência (${n1(pl.pesoRef)} kg, seu peso com gordura na faixa saudável)` : 'de peso corporal'}.</li>
         <li>Carboidrato completa as calorias depois da proteína e da gordura.</li></ul></div>
@@ -575,19 +1001,19 @@ function viewEvolucao() {
   const c = (rot, id, un, ex) => `<label class="campo"><span>${rot}</span><div class="com-unidade"><input class="entrada" id="m-${id}" inputmode="decimal" placeholder="${ex}"><i>${un}</i></div></label>`;
   return `
     <div class="cabecalho"><div><h1>Evolução</h1><p class="suave">Registre peso e bioimpedância a cada 3 ou 4 semanas. O plano se recalcula com os números novos.</p></div></div>
-    <div class="graficos">${grafico('Peso', serie('peso'), 'kg', 1)}${grafico('Gordura corporal', serie('gordura'), '%', 1)}${grafico('Massa magra', magra, 'kg', 1)}</div>
+    <div class="graficos">${grafico('Peso', serie('peso'), 'kg', 1)}${grafico('Gordura corporal', serie('gordura'), '%', 1)}${serie('musculo').length ? grafico('Músculo esquelético', serie('musculo'), '%', 1) : ''}${grafico('Massa magra', magra, 'kg', 1)}</div>
 
     <div class="secao card"><h2>Registrar nova medição</h2>
       <div class="grade-campos">
         <label class="campo"><span>Data</span><input class="entrada" id="m-data" type="date" value="${hojeISO()}" max="${hojeISO()}"></label>
-        ${c('Peso', 'peso', 'kg', n1(p.peso))}${c('Gordura', 'gordura', '%', 'opcional')}${c('Massa muscular', 'musculo', 'kg', 'opcional')}${c('Água', 'agua', '%', 'opcional')}${c('Gordura visceral', 'visceral', 'nível', 'opcional')}
+        ${c('Peso', 'peso', 'kg', n1(p.peso))}${c('Gordura corporal', 'gordura', '%', 'opcional')}${c('Gordura abdominal', 'visceral', 'nível', 'opcional')}${c('Músculo esquelético', 'musculo', '%', 'opcional')}${c('Metabolismo em repouso', 'tmb', 'kcal', 'opcional')}
       </div>
       <div class="acoes" style="margin-top:16px"><button class="btn primario" data-acao="salvar-medida">Salvar medição</button></div>
     </div>
 
     <div class="secao"><h2>Histórico de medições</h2>
-      <div class="card rolagem-x">${ms.length ? `<table class="tabela"><tr><th>Data</th><th>Peso (kg)</th><th>Gordura (%)</th><th>Massa magra (kg)</th><th>Músculo (kg)</th><th>Água (%)</th><th>Visceral</th><th></th></tr>
-        ${ms.slice().reverse().map(x => `<tr><td>${dataBR(x.data)}</td><td>${v(x.peso)}</td><td>${v(x.gordura)}</td><td>${x.gordura != null ? n1(x.peso * (1 - x.gordura / 100)) : '–'}</td><td>${v(x.musculo)}</td><td>${v(x.agua)}</td><td>${x.visceral == null ? '–' : n0(x.visceral)}</td>
+      <div class="card rolagem-x">${ms.length ? `<table class="tabela"><tr><th>Data</th><th>Peso (kg)</th><th>Gordura (%)</th><th>Abdominal (nível)</th><th>Músculo (%)</th><th>Repouso (kcal)</th><th>IMC</th><th>Massa magra (kg)</th><th></th></tr>
+        ${ms.slice().reverse().map(x => `<tr><td>${dataBR(x.data)}</td><td>${v(x.peso)}</td><td>${v(x.gordura)}</td><td>${x.visceral == null ? '–' : n0(x.visceral)}</td><td>${v(x.musculo)}</td><td>${x.tmb == null ? '–' : n0(x.tmb)}</td><td>${x.peso != null && num(p.altura) ? n1(x.peso / Math.pow(num(p.altura) / 100, 2)) : '–'}</td><td>${x.gordura != null ? n1(x.peso * (1 - x.gordura / 100)) : '–'}</td>
           <td><button class="btn icone" data-acao="apagar-medida" data-valor="${x.data}" aria-label="Apagar medição de ${dataBR(x.data)}" title="Apagar">${ic('lixo', 'p')}</button></td></tr>`).join('')}</table>` : '<p class="suave">Nenhuma medição registrada.</p>'}</div>
     </div>
 
@@ -607,24 +1033,30 @@ function viewPerfil() {
     <div class="cabecalho"><div><h1>Perfil</h1><p class="suave">Seus dados de cadastro e as opções de cópia de segurança.</p></div>
       <div class="acoes"><button class="btn primario" data-acao="editar-cadastro">Editar cadastro</button></div></div>
     <div class="duas">
-      <div class="card"><h2>Cadastro</h2><table class="tabela">
+      <div class="card"><h2>Cadastro</h2><table class="tabela quebra">
         ${linha('Nome', esc(p.nome || '–'))}${linha('Sexo', p.sexo === 'F' ? 'Feminino' : 'Masculino')}${linha('Idade', a.idade + ' anos')}
         ${linha('Altura', n0(p.altura) + ' cm')}${linha('Peso', n1(p.peso) + ' kg')}
         ${linha('Objetivo', OBJETIVOS[a.objetivo].nome + (OBJETIVOS[p.objetivo] ? '' : ' (recomendado)'))}
         ${linha('Nível', NIVEIS[p.nivel])}${linha('Treinos por semana', p.dias)}
         ${linha('Equipamentos', lista(p.equip, EQUIPAMENTOS, 'Só peso do corpo'))}${linha('Cuidados', lista(p.restricoes, RESTRICOES, 'Nenhum'))}</table></div>
       <div class="pilha">
-        <div class="card"><h2>Cópia de segurança</h2><p class="suave pequeno">Os dados ficam salvos só neste navegador. Baixe uma cópia para não perder nada ou para levar a outro computador.</p>
+        ${NUVEM ? `<div class="card"><h2>Conta</h2><p class="suave pequeno quebra-email">Conectado como <b>${esc(emailConta())}</b>. Seus dados ficam guardados na sua conta e aparecem em qualquer aparelho em que você entrar.</p>
+          <div class="acoes" style="margin-top:12px"><button class="btn" data-acao="sair">Sair</button></div></div>` : ''}
+        ${ehAdmin() ? `<div class="card"><h2>Pessoas</h2><p class="suave pequeno">O acesso ao BioFicha é por convite. Você escolhe quem entra e manda para a pessoa o link para ela criar a senha.</p>
+          <div class="acoes" style="margin-top:12px"><a class="btn primario" href="#/pessoas">Convidar e gerenciar</a></div></div>` : ''}
+        <div class="card"><h2>Cópia de segurança</h2><p class="suave pequeno">${NUVEM
+          ? 'Baixe uma cópia dos seus dados em arquivo, ou restaure aqui uma cópia feita em outro lugar (por exemplo, no site aberto direto do computador).'
+          : 'Os dados ficam salvos só neste navegador. Baixe uma cópia para não perder nada ou para levar a outro computador.'}</p>
           <div class="acoes" style="margin-top:12px"><button class="btn" data-acao="exportar">Baixar cópia</button>
           <label class="btn">Restaurar cópia<input type="file" id="importar" accept="application/json,.json" hidden></label></div></div>
-        <div class="card"><h2>Apagar tudo</h2><p class="suave pequeno">Remove cadastro, ficha, medições e histórico deste navegador.</p>
+        <div class="card"><h2>Apagar tudo</h2><p class="suave pequeno">Remove cadastro, ficha, medições e histórico ${NUVEM ? 'da sua conta, em todos os aparelhos' : 'deste navegador'}.</p>
           <div class="acoes" style="margin-top:12px"><button class="btn perigo" data-acao="apagar-tudo">Apagar todos os dados</button></div></div>
         <p class="mini suave">Fotos dos exercícios: free-exercise-db (domínio público).</p>
       </div>
     </div>`;
 }
 
-const VIEWS = { painel: viewPainel, ficha: viewFicha, exercicios: viewExercicios, alimentacao: viewAlimentacao, evolucao: viewEvolucao, perfil: viewPerfil };
+const VIEWS = { painel: viewPainel, ficha: viewFicha, exercicios: viewExercicios, alimentacao: viewAlimentacao, evolucao: viewEvolucao, perfil: viewPerfil, pessoas: viewPessoas };
 
 /* ───────── Cronômetro de descanso ───────── */
 const crono = { fim: 0, id: null };
@@ -755,12 +1187,15 @@ const ACOES = {
     const g = id => num($('#m-' + id).value), data = $('#m-data').value, peso = g('peso');
     if (!data || data > hojeISO()) return toast('Informe uma data válida, até hoje.');
     if (peso === null || peso < 30 || peso > 300) return toast('Informe o peso em kg, entre 30 e 300.');
-    const m = { data, peso, gordura: g('gordura'), musculo: g('musculo'), agua: g('agua'), visceral: g('visceral') };
-    if (m.gordura !== null && (m.gordura < 3 || m.gordura > 65)) return toast('O percentual de gordura costuma ficar entre 3 e 65.');
+    const m = { data, peso, gordura: g('gordura'), visceral: g('visceral'), musculo: g('musculo'), tmb: g('tmb') };
+    if (m.gordura !== null && (m.gordura < 3 || m.gordura > 65)) return toast('A gordura corporal costuma ficar entre 3% e 65%.');
+    if (m.visceral !== null && (m.visceral < 1 || m.visceral > 30)) return toast('O nível de gordura abdominal vai de 1 a 30.');
+    if (m.musculo !== null && (m.musculo < 5 || m.musculo > 60)) return toast('O músculo esquelético é um percentual do peso, entre 5% e 60%.');
+    if (m.tmb !== null && (m.tmb < 800 || m.tmb > 4000)) return toast('O metabolismo em repouso costuma ficar entre 800 e 4000 kcal.');
     registrarMedida(m);
     if (estado.medidas[estado.medidas.length - 1].data === data) {     // medição mais recente atualiza o perfil
       estado.perfil.peso = peso;
-      ['gordura', 'musculo', 'agua', 'visceral'].forEach(k => { if (m[k] !== null) estado.perfil.bio[k] = m[k]; });
+      ['gordura', 'visceral', 'musculo', 'tmb'].forEach(k => { if (m[k] !== null) estado.perfil.bio[k] = m[k]; });
     }
     salvar(); render(); toast('Medição salva. Plano recalculado.');
   },
@@ -774,9 +1209,54 @@ const ACOES = {
     a.download = `bioficha-${hojeISO()}.json`; a.click(); URL.revokeObjectURL(a.href);
   },
   'apagar-tudo'() {
-    if (!confirm('Apagar cadastro, ficha, medições e histórico deste navegador?\n\nIsso não pode ser desfeito. Se quiser guardar, baixe uma cópia antes.')) return;
-    localStorage.removeItem(CHAVE); estado = estadoVazio(); ui.rascunho = null; ui.passo = 1; location.hash = ''; render();
+    if (!confirm(`Apagar cadastro, ficha, medições e histórico ${NUVEM ? 'da sua conta, em todos os aparelhos' : 'deste navegador'}?\n\nIsso não pode ser desfeito. Se quiser guardar, baixe uma cópia antes.`)) return;
+    if (NUVEM) {
+      clearTimeout(nuvem.timer); nuvem.timer = null;
+      fb.fs.deleteDoc(nuvem.ref).catch(e => { console.warn('apagar', e); toast('Não consegui apagar os dados da conta. Tente de novo.'); });
+    } else localStorage.removeItem(CHAVE);
+    estado = estadoVazio(); ui.rascunho = null; ui.passo = 1; location.hash = ''; render();
   },
+  // Conta (modo nuvem)
+  'modo-conta'(el) { nuvem.modo = el.dataset.valor; nuvem.erro = ''; nuvem.aviso = ''; render(); const c = $('#c-email'); if (c) c.focus(); },
+  sair() { sairDaConta(); },
+  reconferir() { if (!nuvem.ocupado) reconferirConta(); },
+  async 'enviar-confirmacao'() {
+    nuvem.erro = ''; nuvem.aviso = ''; nuvem.ocupado = true; render();
+    try {
+      await comRetorno(o => fb.auth.sendEmailVerification(fb.au.currentUser, o));
+      nuvem.aviso = 'Link enviado para ' + emailConta() + '. Olhe também a caixa de spam.';
+    } catch (e) { console.warn('confirmacao', e); nuvem.erro = ERROS_CONTA[e.code] || 'Não consegui enviar o link. Tente de novo.'; }
+    nuvem.ocupado = false; render();
+  },
+  // Pessoas (administrador)
+  async 'copiar-convite'(el) {
+    const p = (ui.convites || []).find(x => x.email === el.dataset.valor);
+    if (!p || !p.chave) return toast('Este convite não tem mais link: a pessoa já criou a senha.');
+    if (await copiar(textoConvite(p))) toast('Convite copiado. Cole no WhatsApp ou onde preferir.');
+    else { ui.conviteNovo = p.email; render(); const t = $('#msg-convite'); if (t) { t.focus(); t.select(); } toast('Selecione o texto e copie.'); }
+  },
+  async 'reenviar-convite'(el) {
+    const email = el.dataset.valor;
+    try { await enviarLinkSenha(email); toast('E-mail enviado para ' + email + '. Avise para olhar o spam.'); }
+    catch (e) { console.warn('reenviar', e); toast(ERROS_CONTA[e.code] || 'Não consegui enviar o e-mail.'); }
+  },
+  async 'remover-convite'(el) {
+    const email = el.dataset.valor;
+    if (!confirm('Remover o acesso de ' + email + '?\n\nA pessoa deixa de conseguir entrar na hora. Os dados dela ficam guardados.')) return;
+    try { await fb.fs.updateDoc(fb.fs.doc(fb.db, 'convites', email), { removido: true }); toast('Acesso removido.'); await carregarConvites(); }
+    catch (e) { console.warn('remover', e); toast('Não consegui remover o acesso. Tente de novo.'); }
+  },
+  async 'devolver-acesso'(el) {
+    try { await fb.fs.updateDoc(fb.fs.doc(fb.db, 'convites', el.dataset.valor), { removido: false }); toast('Acesso devolvido.'); await carregarConvites(); }
+    catch (e) { console.warn('devolver', e); toast('Não consegui devolver o acesso. Tente de novo.'); }
+  },
+  async 'excluir-convite'(el) {
+    const email = el.dataset.valor;
+    if (!confirm('Excluir o convite de ' + email + '?\n\nSe você convidar este e-mail de novo, a pessoa vai precisar confirmar o e-mail para voltar a entrar.')) return;
+    try { await fb.fs.deleteDoc(fb.fs.doc(fb.db, 'convites', email)); toast('Convite excluído.'); await carregarConvites(); }
+    catch (e) { console.warn('excluir', e); toast('Não consegui excluir o convite. Tente de novo.'); }
+  },
+  recarregar() { location.reload(); },
   'crono-mais'() { crono.fim += 15000; tique(); },
   'crono-pular'() { pararDescanso(); }
 };
@@ -793,6 +1273,13 @@ document.addEventListener('input', ev => {
     const k = t.dataset.r;
     if (k.startsWith('bio.')) ui.rascunho.bio[k.slice(4)] = t.value; else ui.rascunho[k] = t.value;
   } else if (t.id === 'busca') { ui.filtro.busca = t.value; atualizarGrade(); }
+  else if (t.id === 'c-email') nuvem.email = t.value;
+  else if ((t.id === 'cv-email' || t.id === 'cv-nome') && ui.convite) ui.convite[t.id.slice(3)] = t.value;
+});
+document.addEventListener('submit', ev => {
+  if (ev.target.id === 'form-conta') { ev.preventDefault(); if (!nuvem.ocupado) enviarConta(); }
+  if (ev.target.id === 'form-senha') { ev.preventDefault(); if (!nuvem.ocupado) salvarSenhaNova(); }
+  if (ev.target.id === 'form-convite') { ev.preventDefault(); if (ehAdmin() && !ui.convite.ocupado) enviarConvite(); }
 });
 document.addEventListener('change', ev => {
   const t = ev.target;
@@ -810,8 +1297,8 @@ document.addEventListener('change', ev => {
       try {
         const d = JSON.parse(leitor.result);
         if (!d || !d.perfil || !d.perfil.peso) throw new Error('formato');
-        if (!confirm('Restaurar esta cópia? Os dados atuais deste navegador serão substituídos.')) return;
-        estado = Object.assign(estadoVazio(), d); salvar(); render(); toast('Cópia restaurada.');
+        if (!confirm(`Restaurar esta cópia? Os dados atuais ${NUVEM ? 'da sua conta' : 'deste navegador'} serão substituídos.`)) return;
+        estado = abrirDados(d); salvar(); render(); toast('Cópia restaurada.');
       } catch (e) { toast('Este arquivo não é uma cópia válida do BioFicha.'); }
     };
     leitor.readAsText(t.files[0]);
@@ -847,3 +1334,4 @@ window.addEventListener('error', ev => {
 });
 
 render();
+if (NUVEM) iniciarNuvem();
