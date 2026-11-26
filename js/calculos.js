@@ -36,8 +36,9 @@ function calcularIdade(nascimento, hoje) {
   return anos;
 }
 
-/* Faixas de referência no padrão das balanças Omron (manual da HBF-514C): cada número é classificado
-   em baixo, normal, alto ou muito alto, conforme o sexo e a idade. */
+/* Faixas de referência das balanças Omron, conferidas no manual da HBF-516: cada número é classificado em baixo,
+   normal, alto ou muito alto, conforme o sexo e a idade. O manual define gordura para 20 a 79 anos e músculo para
+   18 a 80; fora disso vale a faixa etária mais próxima. */
 const faixaEtaria = idade => (idade < 40 ? 0 : idade < 60 ? 1 : 2);
 const NIVEIS_OMRON = [['Baixa', 'atencao'], ['Normal', 'bom'], ['Alta', 'atencao'], ['Muito alta', 'alerta']];
 
@@ -185,7 +186,7 @@ const ALIMENTOS = {
   iogurte: { nome: 'iogurte natural desnatado', kcal: 41, p: 3.8, c: 5.8, g: 0.3, max: 340 },
   cottage: { nome: 'queijo cottage', kcal: 98, p: 11, c: 3.4, g: 4.3, max: 200 },
   whey: { nome: 'whey protein', kcal: 400, p: 80, c: 8, g: 6, porUn: 30, passo: 0.5, sing: 'dose de whey protein', plur: 'doses de whey protein', max: 60 },
-  tofu: { nome: 'tofu firme', kcal: 100, p: 11, c: 2, g: 6, max: 250 },
+  tofu: { nome: 'tofu', kcal: 64, p: 6.6, c: 2.1, g: 4, max: 300 },
   pts: { nome: 'proteína de soja texturizada (peso seco)', kcal: 330, p: 50, c: 30, g: 1, max: 60 },
   feijao: { nome: 'feijão cozido', kcal: 76, p: 4.8, c: 13.6, g: 0.5 },
   arroz: { nome: 'arroz cozido', kcal: 128, p: 2.5, c: 28.1, g: 0.2 },

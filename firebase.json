@@ -23,7 +23,8 @@
         "**/node_modules/**",
         "bioficha-*.json",
         "ficha-academia-*.json",
-        "redirecionar/**"
+        "redirecionar/**",
+        "testes/**"
       ],
       "headers": [
         {

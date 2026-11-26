@@ -1,12 +1,16 @@
 rules_version = '2';
 
-// Acesso por convite.
-// - convites/<e-mail em minúsculas>: quem pode usar o site. Só o administrador cria, lê a lista, altera e apaga.
-//   Campos: email, nome, criadoEm, removido, uid (id da conta criada pelo convite), chave (senha provisória do link,
-//   apagada quando a pessoa cria a própria senha), entrouEm.
-// - usuarios/<id da conta>: os dados de cada pessoa. Só a própria pessoa lê e grava, e só com convite valendo.
-//   O administrador lê (não altera) os dados de todos, para o painel de acompanhamento; o site avisa os convidados.
-// Todo o resto é negado.
+// Acesso por convite, com três papéis.
+// - Administrador (id fixo abaixo): convida alunos e profissionais, lê os dados de todos e as anotações.
+// - Profissional (convite com papel "profissional"): convida alunos e lê só os dados de quem ele convidou.
+// - Aluno: lê e grava só os próprios dados.
+//
+// convites/<e-mail em minúsculas>: quem pode usar o site.
+//   Campos: email, nome, criadoEm, removido, papel (aluno | profissional), de (id de quem convidou),
+//   uid (id da conta criada pelo convite), chave (senha provisória do link, apagada quando a pessoa cria a própria senha), entrouEm.
+// usuarios/<id da conta>: os dados de cada pessoa; "responsavel" é o id de quem a convidou.
+// anotacoes/<id da conta do aluno>: anotações de quem acompanha; o aluno não lê.
+// Todo o resto é negado. O site avisa os convidados de que quem os convidou acompanha o progresso deles.
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -17,6 +21,7 @@ service cloud.firestore {
 
     function emailConfirmado() { return logado() && request.auth.token.email_verified == true; }
     function meuEmail() { return request.auth.token.email.lower(); }
+    function meuConvite() { return get(/databases/$(database)/documents/convites/$(meuEmail())).data; }
 
     // A conta é da pessoa convidada quando foi criada pelo próprio convite (mesmo id)
     // ou quando o e-mail está confirmado (criou a senha pelo link enviado por e-mail).
@@ -24,26 +29,42 @@ service cloud.firestore {
       return dados.get('uid', '') == request.auth.uid || emailConfirmado();
     }
     function convidado() {
-      let caminho = /databases/$(database)/documents/convites/$(meuEmail());
-      return logado() && exists(caminho)
-        && get(caminho).data.get('removido', false) != true
-        && contaDoConvite(get(caminho).data);
+      return logado() && exists(/databases/$(database)/documents/convites/$(meuEmail()))
+        && meuConvite().get('removido', false) != true
+        && contaDoConvite(meuConvite());
     }
+    function ehProfissional() { return convidado() && meuConvite().get('papel', 'aluno') == 'profissional'; }
 
     match /usuarios/{uid} {
       allow read, write: if logado() && request.auth.uid == uid && (ehAdmin() || convidado());
-      // Painel do administrador: só leitura, para acompanhar o progresso de cada pessoa
+      // Acompanhamento, só leitura: o administrador vê todos; o profissional, quem ele convidou
       allow read: if ehAdmin();
+      allow read: if ehProfissional() && resource.data.responsavel == request.auth.uid;
     }
 
     match /convites/{email} {
       allow read, delete: if ehAdmin();
       allow create, update: if ehAdmin() && request.resource.data.email == email && email == email.lower();
+
+      // Profissional: só os convites que ele criou, e só de alunos (não cria outro profissional nem toma convite alheio)
+      allow read, delete: if ehProfissional() && resource.data.de == request.auth.uid;
+      allow create: if ehProfissional() && request.resource.data.email == email && email == email.lower()
+        && request.resource.data.de == request.auth.uid && request.resource.data.get('papel', 'aluno') == 'aluno';
+      allow update: if ehProfissional() && resource.data.de == request.auth.uid
+        && request.resource.data.email == email && request.resource.data.de == request.auth.uid
+        && request.resource.data.get('papel', 'aluno') == 'aluno';
+
       // A pessoa convidada só enxerga o próprio convite, e nele só marca quando entrou e apaga a senha provisória
       allow get: if logado() && email == meuEmail() && contaDoConvite(resource.data);
       allow update: if logado() && email == meuEmail() && contaDoConvite(resource.data)
         && request.resource.data.diff(resource.data).affectedKeys().hasOnly(['entrouEm', 'chave'])
         && !('chave' in request.resource.data);
+    }
+
+    match /anotacoes/{uid} {
+      allow read, write: if ehAdmin();
+      allow read, write: if ehProfissional()
+        && get(/databases/$(database)/documents/usuarios/$(uid)).data.responsavel == request.auth.uid;
     }
   }
 }

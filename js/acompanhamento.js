@@ -13,8 +13,8 @@ const arred = (v, casas) => { const f = Math.pow(10, casas || 0); return Math.ro
 const semAcento = s => String(s).normalize('NFD').replace(/[̀-ͯ]/g, '').toLowerCase();
 
 /* ───────── Tabela de alimentos do diário ─────────
-   Valores por 100 g (ou 100 ml) do alimento pronto para consumo, aproximados a partir da tabela TACO e, onde ela
-   não cobre, da USDA. [nome, kcal, proteína, carboidrato, gordura, porção caseira, gramas da porção, outras palavras de busca] */
+   Valores por 100 g (ou 100 ml) do alimento pronto para consumo, da tabela TACO (4ª edição) e, onde ela não cobre,
+   da TBCA/USP ou da USDA. Conferidos nas fontes em novembro de 2026; itens genéricos (bolo, castanhas, salada) são médias. [nome, kcal, proteína, carboidrato, gordura, porção caseira, gramas da porção, outras palavras de busca] */
 const TABELA_ALIMENTOS = [
   // Arroz, feijão, massas e raízes
   ['Arroz branco cozido', 128, 2.5, 28.1, 0.2, 'colher de servir', 45, ''],
@@ -29,10 +29,10 @@ const TABELA_ALIMENTOS = [
   ['Mandioca cozida', 125, 0.6, 30.1, 0.3, 'pedaço', 100, 'aipim macaxeira'],
   ['Mandioca frita', 300, 1.4, 50.3, 11.2, 'porção pequena', 100, 'aipim macaxeira frito'],
   ['Cuscuz de milho', 113, 2.2, 25.3, 0.7, 'fatia', 135, ''],
-  ['Tapioca (goma pronta)', 240, 0, 60, 0, 'tapioca média', 50, 'beiju'],
+  ['Tapioca pronta, sem recheio', 289, 0, 71.9, 0, 'unidade média', 50, 'beiju goma'],
   ['Aveia em flocos', 394, 13.9, 66.6, 8.5, 'colher de sopa', 15, ''],
   ['Granola', 420, 9.0, 65.0, 14.0, 'colher de sopa', 15, ''],
-  ['Farofa', 400, 2.0, 60.0, 17.0, 'colher de sopa', 15, 'farinha'],
+  ['Farofa', 406, 2.1, 80.3, 9.1, 'colher de sopa', 15, 'farinha'],
   // Pães e biscoitos
   ['Pão francês', 300, 8.0, 58.6, 3.1, 'unidade', 50, 'pao de sal pãozinho'],
   ['Pão de forma', 253, 9.4, 49.9, 3.7, 'fatia', 25, 'pao integral'],
@@ -43,13 +43,14 @@ const TABELA_ALIMENTOS = [
   // Carnes, aves, peixes e ovos
   ['Peito de frango grelhado', 159, 32.0, 0, 2.5, 'filé médio', 120, 'file de frango'],
   ['Sobrecoxa de frango assada', 230, 26.0, 0, 13.0, 'unidade', 100, 'coxa'],
-  ['Frango empanado frito', 250, 20.0, 10.0, 15.0, 'pedaço', 100, 'milanesa nuggets'],
+  ['Frango empanado frito', 284, 25.5, 15.5, 13.5, 'filé', 100, 'milanesa'],
   ['Bife grelhado', 241, 31.9, 0, 11.6, 'bife médio', 100, 'alcatra contrafilé carne'],
-  ['Carne moída refogada', 219, 35.9, 0, 7.3, 'colher de servir', 45, 'patinho'],
+  ['Carne moída refogada', 212, 26.7, 0, 10.9, 'colher de servir', 45, 'acém'],
   ['Carne assada ou cozida', 215, 27.0, 0, 11.0, 'pedaço', 100, 'músculo acém panela'],
   ['Picanha grelhada', 289, 26.0, 0, 20.0, 'fatia', 80, 'churrasco'],
   ['Linguiça grelhada', 296, 23.2, 0, 21.9, 'gomo', 60, 'calabresa'],
-  ['Carne de porco grelhada', 210, 28.0, 0, 10.0, 'bisteca', 100, 'lombo suíno'],
+  ['Bisteca de porco grelhada', 280, 28.9, 0, 17.4, 'bisteca', 100, 'carne suína'],
+  ['Lombo de porco assado', 210, 35.7, 0, 6.4, 'fatia', 80, 'carne suína'],
   ['Hambúrguer bovino', 210, 13.2, 11.3, 12.4, 'unidade', 80, 'hamburguer'],
   ['Salsicha', 257, 11.0, 3.0, 22.0, 'unidade', 50, 'hot dog'],
   ['Peixe grelhado (tilápia)', 128, 26.0, 0, 2.7, 'filé', 120, 'file de peixe'],
@@ -113,7 +114,7 @@ const TABELA_ALIMENTOS = [
   ['Sanduíche x-burger', 265, 13.0, 24.0, 13.0, 'unidade', 150, 'hambúrguer lanche'],
   ['Coxinha', 283, 9.6, 34.5, 11.8, 'unidade', 110, 'salgado'],
   ['Pastel de carne', 388, 10.1, 43.8, 20.1, 'unidade', 80, 'salgado'],
-  ['Misto-quente', 280, 14.0, 30.0, 11.0, 'unidade', 110, 'sanduíche queijo presunto']
+  ['Misto-quente', 281, 13.7, 22.5, 15.4, 'unidade', 110, 'sanduíche queijo presunto']
 ].map(([nome, kcal, p, c, g, porcao, gramas, extras], i) => ({ id: 'a' + i, nome, kcal, p, c, g, porcao, gramas, busca: semAcento(nome + ' ' + extras) }));
 const ALIMENTO_POR_ID = Object.fromEntries(TABELA_ALIMENTOS.map(a => [a.id, a]));
 
@@ -197,12 +198,15 @@ function analiseDaSemana(e) {
     if (!pesoEstavel && dP < 0 && ritmoPct > 1 && dias >= 7) ponto('alerta', `Você perdeu cerca de ${br(arred(-ritmo, 1))} kg por semana, mais de 1% do peso. Nesse ritmo o corpo perde músculo junto: aumente um pouco as calorias. Se a perda não foi intencional, procure um médico.`);
     if (emagrecer && !pesoEstavel && dP < 0 && ritmoPct <= 1 && ritmoPct >= 0.25) ponto('bom', `Ritmo de perda de cerca de ${br(arred(-ritmo, 1))} kg por semana, dentro da faixa saudável (até 1% do peso).`);
     if (dV !== null && dV !== 0) ponto(dV < 0 ? 'bom' : 'atencao', `Gordura abdominal passou do nível ${ant.visceral} para ${ult.visceral}.`);
+    const dC = dif('cintura', ult, ant);
+    if (dC !== null && Math.abs(dC) >= 1) ponto(dC < 0 ? 'bom' : emagrecer ? 'atencao' : 'info', `Cintura ${dC < 0 ? 'diminuiu' : 'aumentou'} ${br(arred(Math.abs(dC), 1))} cm desde a medição anterior.`);
     if (pri && pri !== ant && pri.peso != null) {
       const tP = ult.peso - pri.peso, tG = dif('gordura', ult, pri);
       ponto('info', `Desde o início, em ${dataBR(pri.data)}: peso ${Math.abs(tP) < 0.05 ? 'igual' : sinal(tP) + ' kg'}${tG !== null ? `, gordura ${Math.abs(tG) < 0.05 ? 'igual' : sinal(tG) + (Math.abs(tG) >= 1.95 ? ' pontos' : ' ponto')}` : ''}.`);
     }
   }
   if (a.visceral !== null && a.visceral >= 15) ponto('alerta', `Gordura abdominal no nível ${a.visceral}, na faixa muito alta. É o número mais ligado a risco cardiovascular; vale conversar com um médico.`);
+  if (ult && ult.cintura && a.alturaCm && ult.cintura / a.alturaCm >= 0.5) ponto('atencao', `Sua cintura (${br(ult.cintura)} cm) passa de metade da sua altura. Essa relação é um sinal simples de gordura abdominal acima do ideal.`);
   const diasMedida = ult ? diasEntre(ult.data, hoje) : null;
   if (diasMedida !== null && diasMedida >= 8) ponto('info', `A última medição tem ${diasMedida} dias. Lance a desta semana para a análise ficar atual.`);
 
@@ -321,7 +325,8 @@ function secaoDiario(pl) {
   const semana = Array.from({ length: 7 }, (_, i) => dataMenos(hoje, i)).map(data => ({ data, t: somaDiario(diarioDoDia(data)), n: diarioDoDia(data).length }));
   const resto = pl.kcal - t.kcal, q = num(d.qtd), previa = al && q > 0 ? calcularItem(al, d.un === 'g' ? q : q * al.gramas) : null;
   const registro = x => `<div class="entrada-diario"><div class="topo-entrada"><div><b>${esc(x.refeicao)}</b> <span class="suave">· ${n0(x.kcal)} kcal · ${n0(x.p)} g de proteína</span></div>
-      <button class="btn icone" data-acao="diario-apagar" data-valor="${esc(x.id)}" aria-label="Apagar ${esc(x.refeicao)}" title="Apagar a refeição">${ic('lixo', 'p')}</button></div>
+      <span class="acoes-entrada"><button class="btn icone ${ehFavorita(x) ? 'favorita-sim' : ''}" data-acao="diario-favoritar" data-valor="${esc(x.id)}" aria-pressed="${ehFavorita(x)}" aria-label="${ehFavorita(x) ? 'Tirar das favoritas' : 'Salvar como favorita'}" title="${ehFavorita(x) ? 'Tirar das favoritas' : 'Salvar como favorita'}">${ic('estrela', 'p')}</button>
+      <button class="btn icone" data-acao="diario-apagar" data-valor="${esc(x.id)}" aria-label="Apagar ${esc(x.refeicao)}" title="Apagar a refeição">${ic('lixo', 'p')}</button></span></div>
     <table class="tabela itens-diario"><tbody>${x.itens.map((i, n) => `<tr><td>${esc(i.nome)}${i.qtd ? `<br><span class="suave mini">${esc(i.qtd)}</span>` : ''}</td><td>${n0(i.kcal)} kcal</td>
       <td class="so-largo">P ${n0(i.p)} · C ${n0(i.c)} · G ${n0(i.g)}</td><td>${x.itens.length > 1 ? `<button class="btn icone" data-acao="diario-item-apagar" data-valor="${esc(x.id)}" data-idx="${n}" aria-label="Tirar ${esc(i.nome)}" title="Tirar">${ic('x', 'p')}</button>` : ''}</td></tr>`).join('')}</tbody></table></div>`;
   return `<div class="secao" id="diario"><div class="cabecalho" style="margin-bottom:12px"><div><h2>O que eu comi</h2><p class="suave pequeno">Busque cada alimento, informe a quantidade e o site calcula calorias e macros. Em um mês, esses registros servem para reestruturar o plano.</p></div></div>
@@ -329,6 +334,7 @@ function secaoDiario(pl) {
       <div class="card"><div class="grade-campos diario-topo">
           <label class="campo"><span>Dia</span><input class="entrada" id="d-data" type="date" value="${esc(d.data)}" max="${hoje}"></label>
           <label class="campo"><span>Refeição</span><select class="entrada" id="d-refeicao">${REFEICOES_DIARIO.map(r => `<option ${r === d.refeicao ? 'selected' : ''}>${r}</option>`).join('')}</select></label></div>
+        ${barraFavoritas()}
         ${d.manual ? `<div class="grade-campos" style="margin-top:14px">
             <label class="campo"><span>O que foi</span><input class="entrada" id="d-nome" value="${esc(d.nome)}" maxlength="80" placeholder="Prato feito do restaurante"></label>
             <label class="campo"><span>Calorias</span><div class="com-unidade"><input class="entrada" id="d-kcal" inputmode="numeric" value="${esc(d.kcal)}" placeholder="650"><i>kcal</i></div></label>
@@ -348,6 +354,7 @@ function secaoDiario(pl) {
       <div class="card"><h2>${d.data === hoje ? 'Hoje' : dataBR(d.data)}</h2>
         ${barraMeta('Calorias', t.kcal, pl.kcal, 'kcal')}${barraMeta('Proteína', t.p, pl.proteina, 'g')}
         <p class="suave pequeno" style="margin-top:10px">${!doDia.length ? 'Nada registrado neste dia.' : resto >= 0 ? `Faltam ${n0(resto)} kcal para a meta.` : `Passou ${n0(-resto)} kcal da meta.`} ${doDia.length ? `Carboidrato ${n0(t.c)} g · gordura ${n0(t.g)} g.` : ''}</p>
+        ${!doDia.length && diaAnteriorComRegistro(d.data) ? `<div class="acoes" style="margin-top:12px"><button class="btn" data-acao="diario-repetir">Repetir ${diaAnteriorComRegistro(d.data) === dataMenos(d.data, 1) ? 'o dia anterior' : 'o dia ' + dataCurta(diaAnteriorComRegistro(d.data))}</button></div>` : ''}
         <div class="pilha entradas-diario">${doDia.map(registro).join('')}</div></div>
     </div>
     <div class="card rolagem-x" style="margin-top:16px"><h2>Últimos 7 dias</h2><table class="tabela"><tr><th>Dia</th><th>Calorias</th><th>Meta</th><th>Diferença</th><th>Proteína</th></tr>
@@ -549,6 +556,88 @@ function secaoFrequencia() {
   </div>`;
 }
 
+/* ───────── Histórico de cargas por exercício ─────────
+   Cada treino concluído guarda, por exercício, a carga anotada e as séries feitas (sessao.exs).
+   Daí saem a evolução da carga, o recorde e a sugestão de quando subir o peso. */
+function historicoCarga(exId, e) {
+  return ((e || estado).sessoes || []).flatMap(s => (s.exs || []).filter(x => x.id === exId && x.carga > 0)
+    .map(x => ({ data: s.data, carga: x.carga, feitas: x.feitas, series: x.series })));
+}
+// Próxima carga a tentar: quando as duas últimas vezes fecharam todas as séries com a mesma carga
+function sugestaoCarga(exId, cargaAtual) {
+  const h = historicoCarga(exId).slice(-2), atual = num(cargaAtual);
+  if (h.length < 2 || h[0].carga !== h[1].carga || h.some(x => x.feitas < x.series)) return null;
+  if (atual !== null && atual !== h[1].carga) return null;                       // a pessoa já mudou a carga
+  const passo = h[1].carga >= 60 ? 5 : h[1].carga >= 20 ? 2.5 : 1;
+  return { de: h[1].carga, para: h[1].carga + passo };
+}
+// Linha que aparece embaixo do exercício na ficha
+function dicaCarga(it) {
+  const h = historicoCarga(it.ex); if (!h.length) return '';
+  const ult = h[h.length - 1], recorde = Math.max(...h.map(x => x.carga)), sug = sugestaoCarga(it.ex, it.carga);
+  return `<div class="dica-carga">${sug ? `<span class="subir">${ic('cima', 'p')}Você fechou todas as séries com ${br(sug.de)} kg nas 2 últimas vezes. Tente ${br(sug.para)} kg.</span>` : ''}
+    <span class="mini suave">Última: ${br(ult.carga)} kg em ${dataCurta(ult.data)}${recorde > ult.carga ? ` · recorde ${br(recorde)} kg` : h.length > 1 && recorde === ult.carga && h.slice(0, -1).every(x => x.carga < recorde) ? ' · recorde' : ''}</span></div>`;
+}
+// Bloco da janela do exercício
+function blocoCarga(exId) {
+  const h = historicoCarga(exId); if (!h.length) return '';
+  const recorde = Math.max(...h.map(x => x.carga));
+  return `<div class="carga-ex"><h3 style="margin-bottom:8px">Sua carga neste exercício</h3>
+    ${grafico('Carga', h.map(x => ({ data: x.data, v: x.carga })), 'kg', 1)}
+    <p class="mini suave" style="margin-top:8px">${h.length} ${h.length === 1 ? 'treino registrado' : 'treinos registrados'} · recorde de ${br(recorde)} kg</p></div>`;
+}
+// Tabela da Evolução: um exercício por linha, do treinado mais recentemente para o mais antigo
+function secaoCargas() {
+  const ids = [...new Set((estado.sessoes || []).flatMap(s => (s.exs || []).filter(x => x.carga > 0).map(x => x.id)))].filter(id => exDe(id));
+  if (!ids.length) return `<div class="secao"><h2>Progresso de cargas</h2><div class="vazio">Anote a carga de cada exercício na ficha. Ao concluir o treino ela fica registrada, e aqui aparece a evolução.</div></div>`;
+  const linhas = ids.map(id => { const h = historicoCarga(id); return { id, h, pri: h[0], ult: h[h.length - 1], recorde: Math.max(...h.map(x => x.carga)) }; })
+    .sort((a, b) => b.ult.data.localeCompare(a.ult.data));
+  return `<div class="secao"><h2>Progresso de cargas</h2>
+    <div class="card rolagem-x"><table class="tabela cargas"><tr><th>Exercício</th><th>Primeira</th><th>Última</th><th>Recorde</th><th>Mudança</th><th>Treinos</th></tr>
+      ${linhas.map(l => { const d = l.ult.carga - l.pri.carga; return `<tr><td><button class="link-ex" data-acao="ver" data-valor="${l.id}">${esc(exDe(l.id).nome)}</button></td><td>${br(l.pri.carga)} kg</td>
+        <td><b>${br(l.ult.carga)} kg</b><br><span class="suave mini">${dataCurta(l.ult.data)}</span></td><td>${br(l.recorde)} kg</td>
+        <td>${l.h.length < 2 ? '–' : d === 0 ? 'igual' : selo(d > 0 ? 'bom' : 'atencao', (d > 0 ? '+' : '−') + br(Math.abs(d)) + ' kg')}</td><td>${l.h.length}</td></tr>`; }).join('')}</table></div>
+    <p class="mini suave" style="margin-top:8px">Toque no nome do exercício para ver o gráfico da carga.</p></div>`;
+}
+
+/* ───────── Diário: refeições favoritas e repetir o dia anterior ───────── */
+const assinatura = itens => itens.map(i => i.nome + '|' + i.kcal).join(';');
+const ehFavorita = reg => (estado.favoritos || []).some(f => assinatura(f.itens) === assinatura(reg.itens));
+function barraFavoritas() {
+  const fs = estado.favoritos || [];
+  if (!fs.length) return '';
+  return `<div class="favoritas"><span class="mini suave">Favoritas: toque para lançar nesta refeição</span><div class="chips">
+    ${fs.map(f => `<span class="favorita"><button data-acao="diario-usar-favorita" data-valor="${esc(f.id)}"><b>${esc(f.nome)}</b> · ${n0(f.kcal)} kcal</button>
+      <button class="tirar" data-acao="diario-remover-favorita" data-valor="${esc(f.id)}" aria-label="Tirar ${esc(f.nome)} das favoritas" title="Tirar das favoritas">${ic('x', 'p')}</button></span>`).join('')}</div></div>`;
+}
+// Último dia com registros antes da data escolhida
+function diaAnteriorComRegistro(data) {
+  const ds = [...new Set((estado.diario || []).map(x => x.data).filter(d => d < data))].sort();
+  return ds.length ? ds[ds.length - 1] : null;
+}
+const ACOES_DIARIO_EXTRA = {
+  'diario-favoritar'(el) {
+    const reg = (estado.diario || []).find(x => x.id === el.dataset.valor); if (!reg) return;
+    if (ehFavorita(reg)) { estado.favoritos = estado.favoritos.filter(f => assinatura(f.itens) !== assinatura(reg.itens)); salvar(); render(); return toast('Tirada das favoritas.'); }
+    const nome = reg.itens.map(i => i.nome).slice(0, 3).join(', ').slice(0, 60) + (reg.itens.length > 3 ? '…' : '');
+    estado.favoritos = (estado.favoritos || []).concat([{ id: Date.now().toString(36), nome, itens: JSON.parse(JSON.stringify(reg.itens)), kcal: reg.kcal, p: reg.p, c: reg.c, g: reg.g }]).slice(-20);
+    salvar(); render(); toast('Salva nas favoritas.');
+  },
+  'diario-usar-favorita'(el) {
+    const f = (estado.favoritos || []).find(x => x.id === el.dataset.valor), d = rascunhoDiario(); if (!f) return;
+    if (!d.data || d.data > hojeISO()) { d.erro = 'Escolha uma data até hoje.'; return render(); }
+    f.itens.forEach(i => registrarNoDiario(d.data, d.refeicao, Object.assign({}, i), 'tabela'));
+    d.erro = ''; render(); toast(`${f.nome}: ${n0(f.kcal)} kcal lançadas em ${d.refeicao.toLowerCase()}.`);
+  },
+  'diario-remover-favorita'(el) { estado.favoritos = (estado.favoritos || []).filter(f => f.id !== el.dataset.valor); salvar(); render(); },
+  'diario-repetir'() {
+    const d = rascunhoDiario(), origem = diaAnteriorComRegistro(d.data); if (!origem) return;
+    const copias = diarioDoDia(origem).map((x, n) => Object.assign(JSON.parse(JSON.stringify(x)), { id: Date.now().toString(36) + n, data: d.data }));
+    estado.diario = (estado.diario || []).concat(copias).sort((a, b) => a.data.localeCompare(b.data));
+    salvar(); render(); toast(`Copiei ${copias.length} ${copias.length === 1 ? 'refeição' : 'refeições'} de ${dataBR(origem)}. Ajuste o que mudou.`);
+  }
+};
+
 /* ───────── Ações (entram no mapa de ações de app.js) ───────── */
 const ACOES_ACOMPANHAMENTO = {
   'diario-escolher'(el) { const d = rascunhoDiario(); d.sel = el.dataset.valor; d.qtd = '1'; d.un = 'porcao'; d.erro = ''; render(); const c = $('#d-qtd'); if (c) { c.focus(); c.select(); } },
@@ -587,3 +676,4 @@ function campoDiario(t) {
   }
   return true;
 }
+Object.assign(ACOES_ACOMPANHAMENTO, ACOES_DIARIO_EXTRA);

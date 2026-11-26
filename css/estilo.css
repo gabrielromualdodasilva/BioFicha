@@ -216,6 +216,17 @@ textarea.entrada { resize: vertical; line-height: 1.5; min-height: 108px; }
 .marcar.ativo { border-color: var(--marca); background: var(--marca-fraca); }
 .marcar.ativo .caixa { background: var(--marca); border-color: var(--marca); color: var(--marca-tinta); }
 
+.consentimento { display: grid; grid-template-columns: 22px 1fr; gap: 10px; align-items: start; padding: 13px 15px; border-radius: var(--raio-p); border: 1.5px solid var(--linha); background: var(--sup); font-size: 14px; cursor: pointer; }
+.consentimento input { width: 20px; height: 20px; margin: 1px 0 0; accent-color: var(--marca); }
+.consentimento.invalida { border-color: var(--alerta); }
+.erro-consentimento { color: var(--alerta); font-weight: 650; font-size: 12.5px; }
+.privacidade h3 { margin-top: 16px; }
+.privacidade h3:first-child { margin-top: 0; }
+.privacidade p { margin-top: 4px; color: var(--suave); }
+.anotacao { margin-top: 16px; padding: 14px; border-radius: var(--raio-p); background: var(--sup2); }
+.anotacao h3 { margin-bottom: 8px; }
+.anotacao textarea.entrada { min-height: 84px; }
+
 /* Cadastro */
 .cadastro { max-width: 780px; margin: 0 auto; padding: 40px 20px 80px; }
 .cadastro .logo { padding: 0 0 28px; }
@@ -402,6 +413,12 @@ textarea.entrada { resize: vertical; line-height: 1.5; min-height: 108px; }
 .param input.largo { width: 76px; }
 .param input:focus { outline: 2px solid var(--marca); }
 .item .lado { display: flex; gap: 2px; align-items: center; }
+.dica-carga { display: grid; gap: 4px; }
+.dica-carga .subir { display: inline-flex; align-items: center; gap: 6px; justify-self: start; padding: 5px 11px; border-radius: 10px; background: var(--marca-fraca); color: var(--marca); font-size: 13px; font-weight: 700; }
+.link-ex { border: 0; background: none; padding: 0; font-weight: 700; text-align: left; color: var(--texto); }
+.link-ex:hover { color: var(--marca); text-decoration: underline; }
+.tabela.cargas td:first-child { white-space: normal; min-width: 170px; }
+.carga-ex .card { box-shadow: none; }
 .series { display: flex; gap: 7px; flex-wrap: wrap; align-items: center; }
 .serie { width: 44px; height: 44px; border-radius: 50%; border: 2px solid var(--linha); background: var(--sup); font-weight: 800; display: grid; place-items: center; transition: transform .12s, background .12s, border-color .12s; }
 .serie:hover { border-color: var(--marca); }
@@ -437,6 +454,14 @@ textarea.entrada { resize: vertical; line-height: 1.5; min-height: 108px; }
 .resultado span { font-size: 12.5px; color: var(--suave); }
 .alimento-escolhido { display: flex; align-items: center; justify-content: space-between; gap: 12px; padding: 12px 14px; border-radius: var(--raio-p); background: var(--marca-fraca); }
 .previa { margin-top: 10px; font-weight: 700; min-height: 1.5em; }
+.favoritas { margin-top: 14px; display: grid; gap: 6px; }
+.favorita { display: inline-flex; align-items: stretch; border-radius: 999px; border: 1px solid var(--linha); background: var(--sup); overflow: hidden; max-width: 100%; }
+.favorita > button { border: 0; background: none; padding: 7px 4px 7px 14px; font-size: 13.5px; text-align: left; min-width: 0; overflow: hidden; text-overflow: ellipsis; white-space: nowrap; }
+.favorita > button:hover { background: var(--marca-fraca); }
+.favorita > .tirar { padding: 0 10px 0 6px; color: var(--suave); display: grid; place-items: center; flex: none; }
+.acoes-entrada { display: inline-flex; gap: 2px; flex: none; }
+.btn.icone.favorita-sim { color: var(--atencao); }
+.btn.icone.favorita-sim .ic { fill: currentColor; }
 .diario-topo { grid-template-columns: repeat(auto-fit, minmax(150px, 1fr)); }
 .barra-meta { margin-top: 12px; }
 .linha-meta { display: flex; justify-content: space-between; gap: 10px; font-size: 13.5px; }
@@ -530,7 +555,7 @@ table.tabela { width: 100%; border-collapse: collapse; font-size: 14px; }
   .item .info { display: contents; }
   .item > .abre { grid-row: span 2; }
   .item .info > .nome, .item .info > .acoes { grid-column: 2; }
-  .item .info > .series, .item .info > .param, .item .info > .concluir-ex { grid-column: 1 / -1; }
+  .item .info > .series, .item .info > .param, .item .info > .concluir-ex, .item .info > .dica-carga { grid-column: 1 / -1; }
   .concluir-ex { justify-self: stretch; min-height: 42px; }
   .param { display: grid; grid-template-columns: minmax(0, 1fr) minmax(0, 1fr); gap: 6px; margin-top: 4px; }
   .param label { justify-content: space-between; }

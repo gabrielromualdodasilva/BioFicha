@@ -30,7 +30,7 @@ if (NUVEM) {
   }
 }
 
-const estadoVazio = () => ({ modelo: 2, perfil: null, ficha: null, medidas: [], sessoes: [], sessao: null, diario: [], planoDesde: null });
+const estadoVazio = () => ({ modelo: 2, perfil: null, ficha: null, medidas: [], sessoes: [], sessao: null, diario: [], favoritos: [], planoDesde: null });
 // Modelo 2 (bioimpedância no padrão Omron): músculo esquelético em % do peso, em vez de massa muscular em kg,
 // gordura abdominal de 1 a 30, e sem água corporal, idade metabólica e massa óssea.
 function migrar(d) {
@@ -81,7 +81,7 @@ const IC = {
   cima: 'M6 14l6-6 6 6', baixo: 'M6 10l6 6 6-6', lixo: 'M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13', play: 'M8 5l11 7-11 7z',
   video: 'M4 6h11v12H4zM15 10l5-3v10l-5-3', alerta: 'M12 4l9 16H3zM12 10v4M12 17v.5',
   info: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 11v5M12 8v.5', imprimir: 'M7 8V4h10v4M7 17H5V9h14v8h-2M7 14h10v6H7z',
-  raio: 'M13 3L5 13h6l-1 8 8-10h-6z'
+  raio: 'M13 3L5 13h6l-1 8 8-10h-6z', estrela: 'M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1 5.9L12 16.9l-5.2 2.8 1-5.9-4.3-4.1 5.9-.8z'
 };
 const ic = (nome, cls) => `<svg class="ic ${cls || ''}" viewBox="0 0 24 24" aria-hidden="true"><path d="${IC[nome]}"/></svg>`;
 
@@ -144,7 +144,7 @@ const ROTAS = [
   ['painel', 'Painel'], ['ficha', 'Minha ficha'], ['alimentacao', 'Alimentação'], ['evolucao', 'Evolução'], ['perfil', 'Perfil']
 ];
 // Fora do menu: "exercicios" é uma aba de Minha ficha (e atalho no Perfil); "pessoas" é só do administrador, pelo Perfil
-const rotaAtual = () => { const r = location.hash.replace(/^#\/?/, ''); return ROTAS.some(x => x[0] === r) || r === 'exercicios' || (r === 'pessoas' && ehAdmin()) ? r : 'painel'; };
+const rotaAtual = () => { const r = location.hash.replace(/^#\/?/, ''); return ROTAS.some(x => x[0] === r) || r === 'exercicios' || (r === 'pessoas' && podeGerenciar()) ? r : 'painel'; };
 const subabasFicha = ativa => `<div class="subabas" role="tablist" aria-label="Minha ficha">
     <a class="subaba ${ativa === 'ficha' ? 'ativo' : ''}" href="#/ficha" role="tab" aria-selected="${ativa === 'ficha'}">Meus treinos</a>
     <a class="subaba ${ativa === 'exercicios' ? 'ativo' : ''}" href="#/exercicios" role="tab" aria-selected="${ativa === 'exercicios'}">Todos os exercícios <span class="conta">${EXERCICIOS.length}</span></a></div>`;
@@ -164,7 +164,7 @@ function render() {
   }
   if (!estado.perfil || ui.editando) {
     app.className = 'app sem-nav';
-    app.innerHTML = viewCadastro() + (NUVEM && !estado.perfil ? `<p class="conta-rodape mini suave">Conectado como ${esc(emailConta())}. <button class="link" data-acao="sair">Sair</button>${ehAdmin() ? ' · <a href="#/pessoas">Painel do administrador</a>' : ''}</p>` : '');
+    app.innerHTML = viewCadastro() + (NUVEM && !estado.perfil ? `<p class="conta-rodape mini suave">Conectado como ${esc(emailConta())}. <button class="link" data-acao="sair">Sair</button>${podeGerenciar() ? ` · <a href="#/pessoas">${ehAdmin() ? 'Painel do administrador' : 'Meus alunos'}</a>` : ''}</p>` : '');
     return;
   }
   app.className = 'app';
@@ -185,6 +185,9 @@ window.addEventListener('hashchange', () => { if (rotaAtual() === 'pessoas') { u
 const SDK = 'https://www.gstatic.com/firebasejs/10.14.1/firebase-';
 const ADMINS = typeof FIREBASE_ADMINS !== 'undefined' ? FIREBASE_ADMINS : [];
 const ehAdmin = () => NUVEM && !!nuvem.usuario && ADMINS.includes(nuvem.usuario.uid);
+// Profissional: convidado pelo administrador com esse papel; convida e acompanha só os próprios alunos
+const ehProfissional = () => NUVEM && !ehAdmin() && !!nuvem.convite && nuvem.convite.papel === 'profissional' && !nuvem.convite.removido;
+const podeGerenciar = () => ehAdmin() || ehProfissional();
 const EMAIL_OK = /^\S+@\S+\.\S+$/;
 let fb = null;                                            // SDK do Firebase, baixado só no modo nuvem
 const emailConta = () => (nuvem.usuario && (nuvem.usuario.email || nuvem.usuario.displayName)) || '';
@@ -241,7 +244,7 @@ function falhaNuvem(e) {
 function aoMudarUsuario(u) {
   if (nuvem.parar) { nuvem.parar(); nuvem.parar = null; }
   const vez = nuvem.vez = (nuvem.vez || 0) + 1;            // respostas atrasadas de uma abertura anterior são ignoradas
-  nuvem.usuario = u; nuvem.ocupado = false; nuvem.pendente = false;
+  nuvem.usuario = u; nuvem.ocupado = false; nuvem.pendente = false; nuvem.convite = null;
   // Ao sair, a página é recarregada logo em seguida: não mostra o formulário de login nesse intervalo
   if (!u) { estado = estadoVazio(); nuvem.ref = null; nuvem.fase = nuvem.saindo ? 'carregando' : 'login'; return render(); }
   nuvem.fase = 'baixando'; nuvem.erro = ''; nuvem.aviso = ''; render();
@@ -298,6 +301,7 @@ async function conferirConvite(u) {
     const r = fb.fs.doc(fb.db, 'convites', u.email.toLowerCase()), s = await fb.fs.getDoc(r);
     if (!s.exists()) return pelaSessao;
     const d = s.data();
+    nuvem.convite = d;                                      // papel (aluno ou profissional) e quem convidou
     // Quem já confirmou o e-mail (criou a senha pelo link enviado por e-mail) não usa mais a senha provisória
     const dispensa = u.emailVerified;
     const precisa = !!d.chave && !dispensa;
@@ -348,8 +352,8 @@ function salvarNuvem() {
 function enviarNuvem() {
   clearTimeout(nuvem.timer); nuvem.timer = null;
   if (!nuvem.ref) return;
-  // "conta" identifica de quem é o documento para o painel do administrador
-  fb.fs.setDoc(nuvem.ref, Object.assign(JSON.parse(JSON.stringify(estado)), { conta: { email: emailConta() } }))
+  // "conta" identifica de quem é o documento; "responsavel" é quem convidou a pessoa e pode acompanhar o progresso dela
+  fb.fs.setDoc(nuvem.ref, Object.assign(JSON.parse(JSON.stringify(estado)), { conta: { email: emailConta() }, responsavel: (nuvem.convite && nuvem.convite.de) || estado.responsavel || null }))
     .catch(e => { console.warn('salvar', e); toast('Não consegui salvar na sua conta. Tente de novo.'); });
 }
 function textoSituacao() {
@@ -383,7 +387,7 @@ function viewEntrada() {
     <button class="btn primario grande largo" data-acao="reconferir" ${trava}>${nuvem.ocupado ? 'Aguarde…' : 'Tentar de novo'}</button>${conectado}</div>`;
   if (f === 'criar-senha') return `<div class="cadastro conta">${logo}<h1>Crie sua senha</h1>
     <p class="suave quebra-email">Bem-vindo ao BioFicha. Escolha a senha que você vai usar para entrar com o e-mail <b>${esc(emailConta())}</b>.</p>
-    <p class="mini suave">Quem administra o BioFicha acompanha o progresso de quem usa o site: medições, treinos e alimentação.</p>
+    <p class="mini suave">Quem convidou você e o administrador do BioFicha acompanham o seu progresso: medições, treinos e alimentação. <button type="button" class="link" data-acao="ver-privacidade">Privacidade e uso dos dados</button></p>
     <form id="form-senha" class="pilha" novalidate>
       <label class="campo"><span>Nova senha</span><input class="entrada" id="n-senha" type="password" autocomplete="new-password"><small>Pelo menos 6 caracteres.</small></label>
       ${recados}
@@ -407,7 +411,8 @@ function viewEntrada() {
     </form>
     <p class="pequeno suave conta-links">${modo === 'entrar'
       ? 'Esqueceu a senha? <button class="link" data-acao="modo-conta" data-valor="recuperar">Receber link por e-mail</button>'
-      : '<button class="link" data-acao="modo-conta" data-valor="entrar">Voltar para entrar</button>'}</p></div>`;
+      : '<button class="link" data-acao="modo-conta" data-valor="entrar">Voltar para entrar</button>'}</p>
+    <p class="mini suave"><button class="link" data-acao="ver-privacidade">Privacidade e uso dos dados</button></p></div>`;
 }
 async function enviarConta() {
   const email = ($('#c-email').value || '').trim(), senha = $('#c-senha') ? $('#c-senha').value : '';
@@ -444,7 +449,8 @@ const enviarLinkSenha = email => comRetorno(o => fb.auth.sendPasswordResetEmail(
 async function carregarConvites() {
   ui.convites = null;                                     // null = carregando
   try {
-    const q = await fb.fs.getDocs(fb.fs.collection(fb.db, 'convites'));
+    const col = fb.fs.collection(fb.db, 'convites');
+    const q = await fb.fs.getDocs(ehAdmin() ? col : fb.fs.query(col, fb.fs.where('de', '==', nuvem.usuario.uid)));
     ui.convites = q.docs.map(d => d.data()).sort((a, b) => (b.criadoEm || 0) - (a.criadoEm || 0));
   } catch (e) { console.warn('convites', e); ui.convites = []; toast('Não consegui carregar a lista de convidados.'); }
   if (rotaAtual() === 'pessoas') render();
@@ -455,7 +461,8 @@ async function carregarConvites() {
 async function carregarUsuarios() {
   ui.usuarios = null;                                     // null = carregando
   try {
-    const q = await fb.fs.getDocs(fb.fs.collection(fb.db, 'usuarios'));
+    const col = fb.fs.collection(fb.db, 'usuarios');
+    const q = await fb.fs.getDocs(ehAdmin() ? col : fb.fs.query(col, fb.fs.where('responsavel', '==', nuvem.usuario.uid)));
     ui.usuarios = q.docs.map(d => Object.assign(abrirDados(d.data()), { uid: d.id })).filter(u => u.perfil);
   } catch (e) { console.warn('usuarios', e); ui.usuarios = []; toast('Não consegui carregar os usuários.'); }
   if (rotaAtual() === 'pessoas') render();
@@ -474,7 +481,10 @@ function resumoUsuario(u) {
     ultima, diasMedida: ultima ? diasEntre(ultima.data, hoje) : null,
     variacaoPeso: ultima && primeira && ultima !== primeira ? ultima.peso - primeira.peso : null, desde: primeira ? primeira.data : null,
     variacaoGordura: ultima && primeira && ultima !== primeira && ultima.gordura != null && primeira.gordura != null ? ultima.gordura - primeira.gordura : null,
-    diasDiario, removido: !!(convite && convite.removido)
+    diasDiario, removido: !!(convite && convite.removido), meu: !!convite,
+    // Precisa de atenção: uma semana ou mais sem treinar, ou mais de uma semana sem medir
+    alertas: [ss.length ? (diasEntre(ss[ss.length - 1].data, hoje) >= 7 ? `Sem treinar há ${diasEntre(ss[ss.length - 1].data, hoje)} dias` : '') : 'Ainda não treinou',
+      ultima ? (diasEntre(ultima.data, hoje) >= 8 ? `Sem medir há ${diasEntre(ultima.data, hoje)} dias` : '') : 'Sem medição'].filter(Boolean)
   };
 }
 const comSinal = (v, casas) => (Math.abs(v) < 0.05 ? '0' : (v > 0 ? '+' : '−') + n1(Math.abs(v), casas));
@@ -482,22 +492,26 @@ function secaoUsuarios() {
   if (ui.usuarios === undefined) carregarUsuarios();
   const lista = ui.usuarios;
   if (lista === null || lista === undefined) return '<div class="card"><h2>Usuários</h2><p class="suave">Carregando…</p></div>';
-  if (!lista.length) return '<div class="card"><h2>Usuários</h2><p class="suave">Ninguém fez o cadastro ainda. Quem você convidar aparece aqui depois de preencher os dados.</p></div>';
-  const rs = lista.map(u => ({ u, r: resumoUsuario(u) })).sort((a, b) => (b.u.atualizadoEm || 0) - (a.u.atualizadoEm || 0));
-  const ativos = rs.filter(x => !x.r.parado).length, emDia = rs.filter(x => x.r.meta && x.r.treinos7 >= x.r.meta).length, medidos = rs.filter(x => x.r.diasMedida !== null && x.r.diasMedida < 8).length;
+  if (!lista.length || (!ehAdmin() && !lista.some(u => resumoUsuario(u).meu))) return '<div class="card"><h2>Usuários</h2><p class="suave">Ninguém fez o cadastro ainda. Quem você convidar aparece aqui depois de preencher os dados.</p></div>';
+  // O profissional só vê quem ele convidou (a lista de convites dele confirma); quem precisa de atenção vem primeiro
+  const todos = lista.map(u => ({ u, r: resumoUsuario(u) })).filter(x => ehAdmin() || x.r.meu);
+  const precisam = todos.filter(x => x.r.alertas.length && !x.r.removido).length;
+  const rs = todos.filter(x => !ui.soAtencao || (x.r.alertas.length && !x.r.removido)).sort((a, b) => (b.r.alertas.length ? 1 : 0) - (a.r.alertas.length ? 1 : 0) || (b.u.atualizadoEm || 0) - (a.u.atualizadoEm || 0));
+  const ativos = todos.filter(x => !x.r.parado).length, emDia = todos.filter(x => x.r.meta && x.r.treinos7 >= x.r.meta).length, medidos = todos.filter(x => x.r.diasMedida !== null && x.r.diasMedida < 8).length;
   const linhas = rs.map(({ u, r }) => `<tr>
-      <td><b>${esc(r.nome || r.email || 'Sem nome')}</b>${r.nome && r.email ? `<br><span class="suave mini">${esc(r.email)}</span>` : ''}${u.uid === nuvem.usuario.uid ? ' ' + selo('info', 'Você') : ''}${r.removido ? ' ' + selo('alerta', 'Acesso removido') : ''}</td>
+      <td><b>${esc(r.nome || r.email || 'Sem nome')}</b>${r.nome && r.email ? `<br><span class="suave mini">${esc(r.email)}</span>` : ''}${u.uid === nuvem.usuario.uid ? ' ' + selo('info', 'Você') : ''}${r.removido ? ' ' + selo('alerta', 'Acesso removido') : ''}${r.removido ? '' : r.alertas.map(t => '<br>' + selo('atencao', t)).join('')}</td>
       <td>${selo(r.parado ? 'atencao' : 'bom', r.atividade)}</td>
       <td>${r.treinos7} de ${r.meta || '–'}<br><span class="suave mini">${r.treinos28} em 28 dias</span></td>
       <td>${r.ultima ? `${n1(r.ultima.peso)} kg${r.ultima.gordura != null ? ' · ' + n1(r.ultima.gordura) + '%' : ''}<br><span class="mini ${r.diasMedida >= 8 ? 'texto-atencao' : 'suave'}">${r.diasMedida === 0 ? 'hoje' : r.diasMedida === 1 ? 'ontem' : 'há ' + r.diasMedida + ' dias'}</span>` : '–'}</td>
       <td>${r.variacaoPeso === null ? '–' : `${comSinal(r.variacaoPeso)} kg${r.variacaoGordura === null ? '' : `<br><span class="suave mini">gordura ${comSinal(r.variacaoGordura)} pts</span>`}`}</td>
       <td>${r.diasDiario} de 7 dias</td>
       <td class="acoes-linha"><button class="btn" data-acao="ver-usuario" data-valor="${esc(u.uid)}">Ver</button></td></tr>`).join('');
-  return `<div class="card"><div class="cabecalho" style="margin-bottom:12px"><div><h2>Usuários</h2><p class="suave pequeno">Quem já fez o cadastro, do mais recente para o mais parado. Você vê os dados, mas não altera.</p></div>
-      <div class="acoes"><button class="btn" data-acao="recarregar-usuarios">Atualizar</button></div></div>
+  return `<div class="card"><div class="cabecalho" style="margin-bottom:12px"><div><h2>Usuários</h2><p class="suave pequeno">Quem já fez o cadastro. Quem está parado aparece primeiro. Você vê os dados, mas não altera.</p></div>
+      <div class="acoes"><button class="chip ${ui.soAtencao ? 'ativo' : ''}" data-acao="so-atencao">Só quem precisa de atenção (${precisam})</button><button class="btn" data-acao="recarregar-usuarios">Atualizar</button></div></div>
     <div class="tiles" style="margin-bottom:16px">
-      ${tile('Usuários', rs.length, '', '<span class="mini suave">com cadastro feito</span>')}
-      ${tile('Ativos na semana', ativos, '', `<span class="mini suave">de ${rs.length}</span>`)}
+      ${tile('Usuários', todos.length, '', '<span class="mini suave">com cadastro feito</span>')}
+      ${tile('Precisam de atenção', precisam, '', '<span class="mini suave">parados no treino ou na medição</span>')}
+      ${tile('Ativos na semana', ativos, '', `<span class="mini suave">de ${todos.length}</span>`)}
       ${tile('Meta de treinos batida', emDia, '', '<span class="mini suave">nos últimos 7 dias</span>')}
       ${tile('Medição em dia', medidos, '', '<span class="mini suave">nos últimos 7 dias</span>')}
     </div>
@@ -514,6 +528,8 @@ function modalUsuario(uid) {
   const semana = analiseDaSemana(u);
   abrirModal(`${topoModal(esc(r.nome || r.email || 'Usuário'))}<div class="miolo solto">
     <p class="suave pequeno">${esc(r.email)}${r.email ? ' · ' : ''}${a.idade} anos · ${n0(a.alturaCm)} cm · objetivo: ${OBJETIVOS[a.objetivo].nome.toLowerCase()} · ${NIVEIS[p.nivel].toLowerCase()} · último uso ${r.atividade}</p>
+    ${r.alertas.length && !r.removido ? `<p style="margin-top:10px">${r.alertas.map(t => selo('atencao', t)).join(' ')}</p>` : ''}
+    ${blocoNota(uid)}
     <div class="tiles" style="margin-top:14px">
       ${tile('Peso', n1(a.peso), 'kg', r.variacaoPeso === null ? '' : `<span class="mini suave">${comSinal(r.variacaoPeso)} kg desde ${dataBR(r.desde)}</span>`)}
       ${tile('Gordura corporal' + (a.gorduraMedida ? '' : ' (est.)'), n1(a.gordura), '%', selo(a.gorduraClasse.nivel, a.gorduraClasse.rotulo))}
@@ -562,12 +578,12 @@ function viewPessoas() {
        <button class="btn" data-acao="reenviar-convite" data-valor="${esc(p.email)}">Enviar e-mail</button>
        <button class="btn perigo" data-acao="remover-convite" data-valor="${esc(p.email)}">Remover</button>`);
   const linhas = (lista || []).map(p => `<tr>
-      <td><b>${esc(p.nome || p.email)}</b>${p.nome ? `<br><span class="suave">${esc(p.email)}</span>` : ''}</td>
+      <td><b>${esc(p.nome || p.email)}</b>${p.papel === 'profissional' ? ' ' + selo('info', 'Profissional') : ''}${p.nome ? `<br><span class="suave">${esc(p.email)}</span>` : ''}</td>
       <td>${situacao(p)}</td>
       <td class="acoes-linha">${botoes(p)}</td></tr>`).join('');
   const novo = ui.conviteNovo && (lista || []).find(p => p.email === ui.conviteNovo && p.chave && !p.removido);
   return `
-    <div class="cabecalho"><div><h1>Administração</h1><p class="suave">Acompanhe quem usa o BioFicha e escolha quem entra. Só você vê esta tela.</p></div>
+    <div class="cabecalho"><div><h1>${ehAdmin() ? 'Administração' : 'Meus alunos'}</h1><p class="suave">${ehAdmin() ? 'Acompanhe quem usa o BioFicha e escolha quem entra. Só você vê esta tela.' : 'Convide seus alunos e acompanhe o progresso de cada um. Você vê só quem você convidou.'}</p></div>
       <div class="acoes"><a class="btn" href="#/${estado.perfil ? 'perfil' : ''}">${estado.perfil ? 'Voltar ao Perfil' : 'Voltar ao cadastro'}</a></div></div>
     <div class="pilha">
       ${secaoUsuarios()}
@@ -577,6 +593,7 @@ function viewPessoas() {
           <label class="campo"><span>Nome (opcional)</span><input class="entrada" id="cv-nome" type="text" autocomplete="off" maxlength="60" value="${esc(c.nome)}"></label>
           <button class="btn primario" type="submit" ${c.ocupado ? 'disabled' : ''}>${c.ocupado ? 'Criando…' : 'Criar convite'}</button>
         </form>
+        ${ehAdmin() ? `<label class="consentimento" style="margin-top:12px"><input type="checkbox" id="cv-prof" ${c.profissional ? 'checked' : ''}><span><b>É profissional</b> (personal, nutricionista): pode convidar os próprios alunos e acompanhar só eles.</span></label>` : ''}
         ${c.erro ? `<p class="aviso erro" role="alert" style="margin-top:12px">${esc(c.erro)}</p>` : ''}
         <p class="mini suave" style="margin-top:12px">O convite vira um link pessoal. Você copia e manda para a pessoa (WhatsApp, por exemplo); ela abre, cria a senha e entra. Um e-mail automático também é enviado, mas ele costuma cair no spam.</p></div>
       ${novo ? `<div class="card destaque" id="convite-novo"><h2>Convite pronto para ${esc(novo.nome || novo.email)}</h2>
@@ -614,7 +631,7 @@ async function enviarConvite() {
   c.ocupado = true; render();
   try {
     const ref = fb.fs.doc(fb.db, 'convites', email);
-    await fb.fs.setDoc(ref, { email, nome, criadoEm: Date.now(), removido: false }, { merge: true });
+    await fb.fs.setDoc(ref, { email, nome, criadoEm: Date.now(), removido: false, de: nuvem.usuario.uid, papel: ehAdmin() && c.profissional ? 'profissional' : 'aluno' }, { merge: true });
     const conta = await criarContaConvidada(email);
     if (conta) await fb.fs.updateDoc(ref, conta);
     // O e-mail automático é um extra: se falhar ou cair no spam, o link copiado resolve
@@ -626,7 +643,7 @@ async function enviarConvite() {
     await carregarConvites();
   } catch (e) {
     console.warn('convite', e);
-    c.ocupado = false; c.erro = ERROS_CONTA[e.code] || 'Não consegui criar o convite. Tente de novo.';
+    c.ocupado = false; c.erro = e.code === 'permission-denied' ? 'Este e-mail já foi convidado por outra pessoa.' : ERROS_CONTA[e.code] || 'Não consegui criar o convite. Tente de novo.';
     render();
   }
 }
@@ -686,7 +703,8 @@ function viewCadastro() {
       <div class="bloco"><div class="grade-campos">
         ${campo('Altura', 'altura', { un: 'cm', exemplo: '175', modo: 'numeric' })}
         ${campo('Peso atual', 'peso', { un: 'kg', exemplo: '80,5' })}
-      </div></div>`;
+      </div></div>
+      ${campoConsentimento()}`;
   } else if (p === 2) {
     corpo = `
       <p class="suave">Copie os números que a balança de bioimpedância mostra (a ordem é a mesma das balanças Omron). Tudo aqui é opcional: preencha o que tiver e deixe o resto em branco.</p>
@@ -757,6 +775,7 @@ function validarPasso(p) {
     else if (idade === null || idade < 12 || idade > 100) e.nascimento = 'Confira a data: a idade precisa estar entre 12 e 100 anos.';
     faixa('altura', 120, 230, 'Informe a altura em centímetros, entre 120 e 230.', true);
     faixa('peso', 30, 300, 'Informe o peso em kg, entre 30 e 300.', true);
+    if (precisaConsentir() && !consentiu(estado.perfil) && !r.aceite) e.consentimento = 'Marque a caixa para continuar.';
   }
   if (p === 2) {
     faixa('bio.gordura', 3, 65, 'A gordura corporal costuma ficar entre 3% e 65%.');
@@ -770,6 +789,8 @@ function validarPasso(p) {
 
 function concluirCadastro() {
   const r = ui.rascunho, antigo = estado.perfil;
+  if (r.aceite) r.consentimento = { em: Date.now(), versao: VERSAO_PRIVACIDADE };
+  delete r.aceite;
   ['altura', 'peso'].forEach(k => { r[k] = num(r[k]); });
   ['nivel', 'dias', 'refeicoes'].forEach(k => { r[k] = parseInt(r[k], 10); });
   Object.keys(r.bio).forEach(k => { const v = num(r.bio[k]); r.bio[k] = v === null ? '' : v; });
@@ -838,7 +859,7 @@ function viewPainel() {
     <div class="cabecalho"><div><h1>Olá${p.nome ? ', ' + esc(p.nome.split(' ')[0]) : ''}</h1>
       <p class="suave">${a.idade} anos · ${n0(a.alturaCm)} cm · ${n1(a.peso)} kg · objetivo: ${OBJETIVOS[a.objetivo].nome.toLowerCase()}</p></div>
       <div class="acoes"><a class="btn" href="#/evolucao">${ic('mais', 'p')}Nova medição</a></div></div>
-
+    ${cartaoConsentimento()}
     <div class="tres">
       <div class="card destaque">
         <p class="pequeno suave">${escolhido && escolhido !== a.objetivoRecomendado ? 'Recomendação pelos seus números' : 'Seu plano'}</p>
@@ -922,6 +943,7 @@ function viewFicha() {
           ${cardio ? '' : `<label>Descanso (s)<input data-item="${idx}" data-prop="descanso" inputmode="numeric" value="${esc(it.descanso)}" aria-label="Descanso em segundos"></label>`}`}
           ${cardio ? '' : `<label>Carga (kg)<input data-item="${idx}" data-prop="carga" inputmode="decimal" value="${esc(it.carga)}" placeholder="–" aria-label="Carga em kg"></label>`}
         </div>
+        ${cardio ? '' : dicaCarga(it)}
       </div>
       <div class="lado">
         <button class="btn icone" data-acao="trocar" data-valor="${idx}" title="Trocar por outro exercício" aria-label="Trocar exercício">${ic('trocar')}</button>
@@ -1021,6 +1043,7 @@ function modalExercicio(id) {
       <div><h3>Como fazer</h3><p style="margin-top:4px">${esc(ex.como)}</p><p class="suave" style="margin-top:6px"><b>Dica:</b> ${esc(ex.dica)}</p></div>
       ${mus[0].length ? `<div><h3>Músculos trabalhados</h3><p style="margin-top:4px">${mus[0].join(', ')}${mus[1].length ? `<span class="suave"> · auxiliares: ${mus[1].join(', ').toLowerCase()}</span>` : ''}</p></div>` : ''}
       <div><a class="btn" href="${video}" target="_blank" rel="noopener">${ic('video', 'p')}Ver vídeos da execução no YouTube</a></div>
+      ${blocoCarga(id)}
       ${estado.ficha && estado.ficha.dias.length ? `<div><h3 style="margin-bottom:8px">Na minha ficha</h3>${chipsDias(id)}</div>` : ''}
     </div>`);
 }
@@ -1131,21 +1154,25 @@ function viewEvolucao() {
   return `
     <div class="cabecalho"><div><h1>Evolução</h1><p class="suave">Lance o peso e a bioimpedância toda semana. A análise e o plano se refazem com os números novos.</p></div></div>
     ${cartaoAnalise()}
-    <div class="graficos secao">${grafico('Peso', serie('peso'), 'kg', 1)}${grafico('Gordura corporal', serie('gordura'), '%', 1)}${serie('musculo').length ? grafico('Músculo esquelético', serie('musculo'), '%', 1) : ''}${grafico('Massa magra', magra, 'kg', 1)}</div>
+    <div class="graficos secao">${grafico('Peso', serie('peso'), 'kg', 1)}${grafico('Gordura corporal', serie('gordura'), '%', 1)}${serie('musculo').length ? grafico('Músculo esquelético', serie('musculo'), '%', 1) : ''}${serie('cintura').length ? grafico('Cintura', serie('cintura'), 'cm', 1) : ''}${grafico('Massa magra', magra, 'kg', 1)}</div>
 
     <div class="secao card"><h2>Registrar nova medição</h2>
       <div class="grade-campos">
         <label class="campo"><span>Data</span><input class="entrada" id="m-data" type="date" value="${hojeISO()}" max="${hojeISO()}"></label>
         ${c('Peso', 'peso', 'kg', n1(p.peso))}${c('Gordura corporal', 'gordura', '%', 'opcional')}${c('Gordura abdominal', 'visceral', 'nível', 'opcional')}${c('Músculo esquelético', 'musculo', '%', 'opcional')}${c('Metabolismo em repouso', 'tmb', 'kcal', 'opcional')}
+        ${c('Cintura', 'cintura', 'cm', 'opcional')}${c('Quadril', 'quadril', 'cm', 'opcional')}${c('Braço', 'braco', 'cm', 'opcional')}
       </div>
+      <p class="mini suave" style="margin-top:10px">Fita métrica: cintura na altura do umbigo, quadril na parte mais larga, braço relaxado no meio do bíceps. A bioimpedância oscila com a hidratação; a fita confirma a tendência.</p>
       <div class="acoes" style="margin-top:16px"><button class="btn primario" data-acao="salvar-medida">Salvar medição</button></div>
     </div>
 
     <div class="secao"><h2>Histórico de medições</h2>
-      <div class="card rolagem-x">${ms.length ? `<table class="tabela"><tr><th>Data</th><th>Peso (kg)</th><th>Gordura (%)</th><th>Abdominal (nível)</th><th>Músculo (%)</th><th>Repouso (kcal)</th><th>IMC</th><th>Massa magra (kg)</th><th></th></tr>
-        ${ms.slice().reverse().map(x => `<tr><td>${dataBR(x.data)}</td><td>${v(x.peso)}</td><td>${v(x.gordura)}</td><td>${x.visceral == null ? '–' : n0(x.visceral)}</td><td>${v(x.musculo)}</td><td>${x.tmb == null ? '–' : n0(x.tmb)}</td><td>${x.peso != null && num(p.altura) ? n1(x.peso / Math.pow(num(p.altura) / 100, 2)) : '–'}</td><td>${x.gordura != null ? n1(x.peso * (1 - x.gordura / 100)) : '–'}</td>
+      <div class="card rolagem-x">${ms.length ? `<table class="tabela"><tr><th>Data</th><th>Peso (kg)</th><th>Gordura (%)</th><th>Abdominal (nível)</th><th>Músculo (%)</th><th>Repouso (kcal)</th><th>IMC</th><th>Massa magra (kg)</th><th>Cintura (cm)</th><th>Quadril (cm)</th><th>Braço (cm)</th><th></th></tr>
+        ${ms.slice().reverse().map(x => `<tr><td>${dataBR(x.data)}</td><td>${v(x.peso)}</td><td>${v(x.gordura)}</td><td>${x.visceral == null ? '–' : n0(x.visceral)}</td><td>${v(x.musculo)}</td><td>${x.tmb == null ? '–' : n0(x.tmb)}</td><td>${x.peso != null && num(p.altura) ? n1(x.peso / Math.pow(num(p.altura) / 100, 2)) : '–'}</td><td>${x.gordura != null ? n1(x.peso * (1 - x.gordura / 100)) : '–'}</td><td>${v(x.cintura)}</td><td>${v(x.quadril)}</td><td>${v(x.braco)}</td>
           <td><button class="btn icone" data-acao="apagar-medida" data-valor="${x.data}" aria-label="Apagar medição de ${dataBR(x.data)}" title="Apagar">${ic('lixo', 'p')}</button></td></tr>`).join('')}</table>` : '<p class="suave">Nenhuma medição registrada.</p>'}</div>
     </div>
+
+    ${secaoCargas()}
 
     <div class="secao"><h2>Treinos concluídos</h2>
       <div class="card rolagem-x">${estado.sessoes.length ? `<table class="tabela"><tr><th>Data</th><th>Treino</th><th>Séries feitas</th><th>Duração</th></tr>
@@ -1170,10 +1197,11 @@ function viewPerfil() {
         ${linha('Nível', NIVEIS[p.nivel])}${linha('Treinos por semana', p.dias)}
         ${linha('Equipamentos', lista(p.equip, EQUIPAMENTOS, 'Só peso do corpo'))}${linha('Cuidados', lista(p.restricoes, RESTRICOES, 'Nenhum'))}</table></div>
       <div class="pilha">
-        ${NUVEM ? `<div class="card"><h2>Conta</h2><p class="suave pequeno quebra-email">Conectado como <b>${esc(emailConta())}</b>. Seus dados ficam guardados na sua conta e aparecem em qualquer aparelho em que você entrar.${ehAdmin() ? '' : ' Quem administra o BioFicha acompanha o seu progresso: medições, treinos e alimentação.'}</p>
-          <div class="acoes" style="margin-top:12px"><button class="btn" data-acao="sair">Sair</button></div></div>` : ''}
-        ${ehAdmin() ? `<div class="card"><h2>Administração</h2><p class="suave pequeno">Acompanhe o progresso de quem usa o BioFicha e escolha quem entra: você cria o convite e manda o link para a pessoa criar a senha.</p>
-          <div class="acoes" style="margin-top:12px"><a class="btn primario" href="#/pessoas">Abrir painel do administrador</a></div></div>` : ''}
+        ${NUVEM ? `<div class="card"><h2>Conta</h2><p class="suave pequeno quebra-email">Conectado como <b>${esc(emailConta())}</b>. Seus dados ficam guardados na sua conta e aparecem em qualquer aparelho em que você entrar.${ehAdmin() ? '' : ' Quem convidou você e o administrador do BioFicha acompanham o seu progresso: medições, treinos e alimentação.'} <button class="link" data-acao="ver-privacidade">Privacidade e uso dos dados</button></p>
+          <div class="acoes" style="margin-top:12px"><button class="btn" data-acao="trocar-senha">Trocar senha</button><button class="btn" data-acao="sair">Sair</button>${ehAdmin() ? '' : '<button class="btn perigo" data-acao="excluir-conta">Excluir conta</button>'}</div></div>` : ''}
+        ${cartaoInstalar()}
+        ${podeGerenciar() ? `<div class="card"><h2>${ehAdmin() ? 'Administração' : 'Meus alunos'}</h2><p class="suave pequeno">${ehAdmin() ? 'Acompanhe o progresso de quem usa o BioFicha, convide alunos e profissionais, e veja quem está parado.' : 'Convide seus alunos e acompanhe o progresso de cada um: treinos, medições e alimentação.'}</p>
+          <div class="acoes" style="margin-top:12px"><a class="btn primario" href="#/pessoas">${ehAdmin() ? 'Abrir painel do administrador' : 'Abrir meus alunos'}</a></div></div>` : ''}
         <div class="card"><h2>Exercícios</h2><p class="suave pequeno">O BioFicha tem ${EXERCICIOS.length} exercícios com foto e explicação. ${estado.ficha ? new Set(estado.ficha.dias.flatMap(d => d.itens.map(i => i.ex))).size : 0} estão na sua ficha.</p>
           <div class="acoes" style="margin-top:12px"><a class="btn" href="#/exercicios">Ver todos os exercícios</a></div></div>
         <div class="card"><h2>Cópia de segurança</h2><p class="suave pequeno">${NUVEM
@@ -1302,7 +1330,8 @@ const ACOES = {
     const total = dia.itens.reduce((t, i) => t + (parseInt(i.series, 10) || 1), 0);
     const feitas = dia.itens.reduce((t, i) => t + Math.min(s.feitas[i.ex] || 0, parseInt(i.series, 10) || 1), 0);
     if (feitas < total && !confirm(`Você marcou ${feitas} de ${total} séries. Concluir mesmo assim?`)) return;
-    estado.sessoes.push({ data: hojeISO(), dia: dia.id, titulo: dia.titulo || '', feitas, total, minutos: Math.max(1, Math.round((Date.now() - s.inicio) / 60000)) });
+    const exs = dia.itens.map(i => { const n = parseInt(i.series, 10) || 1; return { id: i.ex, carga: num(i.carga), series: n, feitas: Math.min(s.feitas[i.ex] || 0, n) }; }).filter(x => x.feitas > 0);
+    estado.sessoes.push({ data: hojeISO(), dia: dia.id, titulo: dia.titulo || '', feitas, total, minutos: Math.max(1, Math.round((Date.now() - s.inicio) / 60000)), exs });
     estado.sessao = null; pararDescanso(); salvar(); render(); toast('Treino concluído e registrado. Bom trabalho!');
   },
 
@@ -1330,11 +1359,14 @@ const ACOES = {
     const g = id => num($('#m-' + id).value), data = $('#m-data').value, peso = g('peso');
     if (!data || data > hojeISO()) return toast('Informe uma data válida, até hoje.');
     if (peso === null || peso < 30 || peso > 300) return toast('Informe o peso em kg, entre 30 e 300.');
-    const m = { data, peso, gordura: g('gordura'), visceral: g('visceral'), musculo: g('musculo'), tmb: g('tmb') };
+    const m = { data, peso, gordura: g('gordura'), visceral: g('visceral'), musculo: g('musculo'), tmb: g('tmb'), cintura: g('cintura'), quadril: g('quadril'), braco: g('braco') };
     if (m.gordura !== null && (m.gordura < 3 || m.gordura > 65)) return toast('A gordura corporal costuma ficar entre 3% e 65%.');
     if (m.visceral !== null && (m.visceral < 1 || m.visceral > 30)) return toast('O nível de gordura abdominal vai de 1 a 30.');
     if (m.musculo !== null && (m.musculo < 5 || m.musculo > 60)) return toast('O músculo esquelético é um percentual do peso, entre 5% e 60%.');
     if (m.tmb !== null && (m.tmb < 800 || m.tmb > 4000)) return toast('O metabolismo em repouso costuma ficar entre 800 e 4000 kcal.');
+    if (m.cintura !== null && (m.cintura < 40 || m.cintura > 200)) return toast('Informe a cintura em centímetros, entre 40 e 200.');
+    if (m.quadril !== null && (m.quadril < 50 || m.quadril > 200)) return toast('Informe o quadril em centímetros, entre 50 e 200.');
+    if (m.braco !== null && (m.braco < 15 || m.braco > 70)) return toast('Informe o braço em centímetros, entre 15 e 70.');
     registrarMedida(m);
     if (estado.medidas[estado.medidas.length - 1].data === data) {     // medição mais recente atualiza o perfil
       estado.perfil.peso = peso;
@@ -1374,6 +1406,7 @@ const ACOES = {
   // Administração
   'ver-usuario'(el) { modalUsuario(el.dataset.valor); },
   'recarregar-usuarios'() { carregarUsuarios(); render(); },
+  'so-atencao'() { ui.soAtencao = !ui.soAtencao; render(); },
   async 'copiar-convite'(el) {
     const p = (ui.convites || []).find(x => x.email === el.dataset.valor);
     if (!p || !p.chave) return toast('Este convite não tem mais link: a pessoa já criou a senha.');
@@ -1406,7 +1439,7 @@ const ACOES = {
   'crono-pular'() { pararDescanso(); }
 };
 
-Object.assign(ACOES, ACOES_ACOMPANHAMENTO);
+Object.assign(ACOES, ACOES_ACOMPANHAMENTO, ACOES_CONTA);
 
 function atualizarGrade() { const g = $('#grade'); if (g) g.innerHTML = gradeExercicios(); else render(); }
 
@@ -1427,11 +1460,15 @@ document.addEventListener('input', ev => {
 document.addEventListener('submit', ev => {
   if (ev.target.id === 'form-conta') { ev.preventDefault(); if (!nuvem.ocupado) enviarConta(); }
   if (ev.target.id === 'form-senha') { ev.preventDefault(); if (!nuvem.ocupado) salvarSenhaNova(); }
-  if (ev.target.id === 'form-convite') { ev.preventDefault(); if (ehAdmin() && !ui.convite.ocupado) enviarConvite(); }
+  if (ev.target.id === 'form-convite') { ev.preventDefault(); if (podeGerenciar() && !ui.convite.ocupado) enviarConvite(); }
+  if (ev.target.id === 'form-trocar-senha') { ev.preventDefault(); if (!ui.modalConta.ocupado) trocarSenha(); }
+  if (ev.target.id === 'form-excluir-conta') { ev.preventDefault(); if (!ui.modalConta.ocupado) excluirConta(); }
 });
 document.addEventListener('change', ev => {
   const t = ev.target;
   if (t.id === 'filtro-equip') { ui.filtro.equip = t.value; atualizarGrade(); }
+  else if (t.id === 'aceite' && ui.rascunho) { ui.rascunho.aceite = t.checked; if (t.checked) delete ui.erros.consentimento; }
+  else if (t.id === 'cv-prof' && ui.convite) ui.convite.profissional = t.checked;
   else if (t.id === 'd-data' || t.id === 'd-refeicao' || t.id === 'd-un') { campoDiario(t); rascunhoDiario().erro = ''; render(); }
   else if (t.dataset.item != null) {
     const it = diaAtual().itens[parseInt(t.dataset.item, 10)], prop = t.dataset.prop;
@@ -1484,3 +1521,4 @@ window.addEventListener('error', ev => {
 
 render();
 if (NUVEM) iniciarNuvem();
+if (!DEMO) ligarModoAplicativo();
