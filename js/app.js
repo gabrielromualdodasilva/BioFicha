@@ -10,7 +10,8 @@ const TODOS_EQUIP = Object.keys(EQUIPAMENTOS).filter(k => k !== 'corpo');
 
 const CFG = typeof FIREBASE_CONFIG !== 'undefined' && FIREBASE_CONFIG && FIREBASE_CONFIG.apiKey ? FIREBASE_CONFIG : null;
 const NUVEM = !DEMO && !!CFG && /^https?:$/.test(location.protocol) &&
-  [CFG.projectId + '.web.app', CFG.projectId + '.firebaseapp.com', 'localhost', '127.0.0.1'].includes(location.hostname);
+  [CFG.projectId + '.web.app', CFG.projectId + '.firebaseapp.com', 'localhost', '127.0.0.1']
+    .concat(typeof FIREBASE_ENDERECOS !== 'undefined' ? FIREBASE_ENDERECOS : []).includes(location.hostname);
 // fase: local | carregando | login | baixando | pronto | falha
 const nuvem = { fase: NUVEM ? 'carregando' : 'local', usuario: null, modo: 'entrar', erro: '', aviso: '', ocupado: false, pendente: false, ref: null, parar: null, timer: null };
 
@@ -425,10 +426,15 @@ async function enviarConta() {
   if (nuvem.fase === 'login') render();
 }
 
-// Os e-mails do Firebase trazem um botão para voltar ao site. Se o projeto recusar o endereço, o e-mail vai sem o botão.
+// Os e-mails do Firebase trazem um botão para voltar ao site: tenta o endereço em uso, depois o padrão do projeto;
+// se o projeto recusar os dois, o e-mail vai sem o botão.
 async function comRetorno(enviar) {
-  try { await enviar({ url: 'https://' + CFG.projectId + '.web.app/' }); }
-  catch (e) { if (e.code !== 'auth/unauthorized-continue-uri') throw e; await enviar(undefined); }
+  const padrao = 'https://' + CFG.projectId + '.web.app/', aqui = location.origin + '/';
+  for (const url of (location.protocol === 'https:' && aqui !== padrao ? [aqui, padrao] : [padrao])) {
+    try { return await enviar({ url }); }
+    catch (e) { if (e.code !== 'auth/unauthorized-continue-uri') throw e; }
+  }
+  await enviar(undefined);
 }
 const enviarLinkSenha = email => comRetorno(o => fb.auth.sendPasswordResetEmail(fb.au, email, o));
 

@@ -12,3 +12,5 @@ const FIREBASE_CONFIG = {
 };
 // Id da conta de quem administra os convites. Só muda o que a tela mostra; quem manda de verdade é firestore.rules.
 const FIREBASE_ADMINS = ['x34voXDvYVjAx574z7M3yUFoX7tC'];
+// Endereços em que o site roda no modo nuvem, além do padrão do projeto (<projeto>.web.app)
+const FIREBASE_ENDERECOS = ['biofit.web.app', 'biofit.firebaseapp.com'];
