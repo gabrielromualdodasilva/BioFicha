@@ -5,3 +5,6 @@ ficha-academia-*.json
 # Cache local do Firebase CLI
 .firebase/
 *.log
+
+# Dependências do servidor da IA
+node_modules/

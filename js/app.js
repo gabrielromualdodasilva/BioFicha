@@ -29,7 +29,7 @@ if (NUVEM) {
   }
 }
 
-const estadoVazio = () => ({ modelo: 2, perfil: null, ficha: null, medidas: [], sessoes: [], sessao: null });
+const estadoVazio = () => ({ modelo: 2, perfil: null, ficha: null, medidas: [], sessoes: [], sessao: null, analises: [], diario: [], planoDesde: null });
 // Modelo 2 (bioimpedância no padrão Omron): músculo esquelético em % do peso, em vez de massa muscular em kg,
 // gordura abdominal de 1 a 30, e sem água corporal, idade metabólica e massa óssea.
 function migrar(d) {
@@ -97,6 +97,12 @@ function anim(id, auto) {
     (auto ? `<img class="f2" src="${img(id, 1)}" alt="" loading="lazy">` : `<img class="f2" data-src="${img(id, 1)}" alt="">`) + '</div>';
 }
 const diasCom = exId => (estado.ficha ? estado.ficha.dias.filter(d => d.itens.some(i => i.ex === exId)).map(d => d.id) : []);
+// Treinos concluídos desde segunda-feira
+function treinosDaSemana() {
+  const d = new Date(hojeISO() + 'T12:00:00'); d.setDate(d.getDate() - ((d.getDay() + 6) % 7));
+  const segunda = d.toISOString().slice(0, 10);
+  return new Set((estado.sessoes || []).filter(s => s.data >= segunda).map(s => s.dia));
+}
 const diaAtual = () => { const ds = estado.ficha.dias; return ds.find(d => d.id === ui.dia) || ds[0]; };
 
 /* ───────── Dados de exemplo (index.html?demo) ───────── */
@@ -113,7 +119,19 @@ function dadosDemo() {
     { data: '2026-11-24', peso: 88.4, gordura: 25.6, visceral: 10, musculo: 35.8, tmb: 1845 }
   ];
   const a = analisar(perfil);
-  return { modelo: 2, perfil, ficha: gerarFicha(perfil, a.objetivo), medidas, sessoes: [{ data: '2026-11-23', dia: 'A', titulo: 'Superiores A', feitas: 18, total: 18, minutos: 52 }], sessao: null };
+  const analises = [{
+    data: '2026-11-24', resumo: 'Você perdeu 3,6 kg em três meses e quase tudo veio de gordura: o músculo esquelético subiu de 34,6% para 35,8%. É o cenário ideal para emagrecimento, e o ritmo de 0,3 kg por semana está sustentável.',
+    destaques: [
+      { tipo: 'bom', texto: 'Gordura corporal caiu de 27,5% para 25,6% desde agosto, com queda em todas as medições.' },
+      { tipo: 'bom', texto: 'Músculo esquelético em 35,8%, dentro da faixa normal e subindo.' },
+      { tipo: 'atencao', texto: 'Gordura abdominal ainda no nível 10, no limite da faixa alta. É o número que mais vale acompanhar.' },
+      { tipo: 'info', texto: 'Só 1 treino concluído nos últimos 7 dias, contra 4 planejados.' }
+    ],
+    treino: ['Volte aos 4 treinos na semana: a queda de gordura depende mais da constância do que da carga.', 'Mantenha as cargas atuais nos compostos e suba só quando fechar todas as séries no topo da faixa.'],
+    alimentacao: ['Registre o que comer em pelo menos 5 dias para conferir se a proteína chega perto de 164 g.', 'Troque as calorias líquidas do fim de semana por água ou café sem açúcar.'],
+    meta_semana: 'Concluir os 4 treinos da ficha até domingo.'
+  }];
+  return { modelo: 2, analises, diario: [], planoDesde: '2026-11-10', perfil, ficha: gerarFicha(perfil, a.objetivo), medidas, sessoes: [{ data: '2026-11-23', dia: 'A', titulo: 'Superiores A', feitas: 18, total: 18, minutos: 52 }], sessao: null };
 }
 
 /* ───────── Roteamento e moldura ───────── */
@@ -139,19 +157,19 @@ function render() {
   }
   if (!estado.perfil || ui.editando) {
     app.className = 'app sem-nav';
-    app.innerHTML = viewCadastro() + (NUVEM && !estado.perfil ? `<p class="conta-rodape mini suave">Conectado como ${esc(emailConta())}. <button class="link" data-acao="sair">Sair</button>${ehAdmin() ? ' · <a href="#/pessoas">Convidar pessoas</a>' : ''}</p>` : '');
+    app.innerHTML = viewCadastro() + (NUVEM && !estado.perfil ? `<p class="conta-rodape mini suave">Conectado como ${esc(emailConta())}. <button class="link" data-acao="sair">Sair</button>${ehAdmin() ? ' · <a href="#/pessoas">Painel do administrador</a>' : ''}</p>` : '');
     return;
   }
   app.className = 'app';
   app.innerHTML = `
     <nav class="lateral" aria-label="Seções">
       <div class="logo"><span class="logo-marca">${ic('exercicios')}</span>BioFicha</div>
-      ${ROTAS.map(([r, nome]) => `<a class="nav-item ${r === rota || (r === 'perfil' && rota === 'pessoas') ? 'ativo' : ''}" href="#/${r}">${ic(r)}<span>${r === 'ficha' ? '<span class="so-largo">Minha </span>' : ''}${r === 'ficha' ? 'ficha' : nome}</span></a>`).join('')}
+      ${ROTAS.map(([r, nome]) => `<a class="nav-item ${r === rota || (r === 'perfil' && rota === 'pessoas') ? 'ativo' : ''}" href="#/${r}">${ic(r)}<span>${r === 'ficha' ? '<span class="so-largo">Minha </span>ficha' : r === 'alimentacao' ? '<span class="so-largo">Alimentação</span><span class="so-estreito">Dieta</span>' : nome}</span></a>`).join('')}
       <div class="rodape mini suave" id="situacao">${DEMO ? 'Modo demonstração: dados de exemplo.' : NUVEM ? textoSituacao() : 'Seus dados ficam salvos só neste navegador.'}</div>
     </nav>
     <main class="conteudo" id="conteudo">${VIEWS[rota]()}</main>`;
 }
-window.addEventListener('hashchange', () => { if (rotaAtual() === 'pessoas') ui.convites = undefined; render(); window.scrollTo(0, 0); });
+window.addEventListener('hashchange', () => { if (rotaAtual() === 'pessoas') { ui.convites = undefined; ui.usuarios = undefined; } render(); window.scrollTo(0, 0); });
 
 /* ───────── Nuvem: conta e dados no Firebase (Auth + Firestore) ─────────
    Cada pessoa tem um único documento, usuarios/<id da conta>, com o mesmo conteúdo que o modo local guarda no navegador.
@@ -183,7 +201,7 @@ async function iniciarNuvem() {
     // Cópia local do Firestore: o que for marcado sem internet (no meio do treino) sobe quando a conexão voltar
     try { db = fs.initializeFirestore(inst, { localCache: fs.persistentLocalCache({ tabManager: fs.persistentMultipleTabManager() }) }); }
     catch (e) { db = fs.getFirestore(inst); }
-    fb = { app, auth, fs, db, au: auth.getAuth(inst) };
+    fb = { app, auth, fs, db, inst, au: auth.getAuth(inst) };
     fb.au.languageCode = 'pt-BR';
     auth.onAuthStateChanged(fb.au, u => {
       const c = conviteLink; conviteLink = null;
@@ -323,7 +341,8 @@ function salvarNuvem() {
 function enviarNuvem() {
   clearTimeout(nuvem.timer); nuvem.timer = null;
   if (!nuvem.ref) return;
-  fb.fs.setDoc(nuvem.ref, JSON.parse(JSON.stringify(estado)))
+  // "conta" identifica de quem é o documento para o painel do administrador
+  fb.fs.setDoc(nuvem.ref, Object.assign(JSON.parse(JSON.stringify(estado)), { conta: { email: emailConta() } }))
     .catch(e => { console.warn('salvar', e); toast('Não consegui salvar na sua conta. Tente de novo.'); });
 }
 function textoSituacao() {
@@ -357,6 +376,7 @@ function viewEntrada() {
     <button class="btn primario grande largo" data-acao="reconferir" ${trava}>${nuvem.ocupado ? 'Aguarde…' : 'Tentar de novo'}</button>${conectado}</div>`;
   if (f === 'criar-senha') return `<div class="cadastro conta">${logo}<h1>Crie sua senha</h1>
     <p class="suave quebra-email">Bem-vindo ao BioFicha. Escolha a senha que você vai usar para entrar com o e-mail <b>${esc(emailConta())}</b>.</p>
+    <p class="mini suave">Quem administra o BioFicha acompanha o progresso de quem usa o site: medições, treinos e alimentação.</p>
     <form id="form-senha" class="pilha" novalidate>
       <label class="campo"><span>Nova senha</span><input class="entrada" id="n-senha" type="password" autocomplete="new-password"><small>Pelo menos 6 caracteres.</small></label>
       ${recados}
@@ -417,6 +437,90 @@ async function carregarConvites() {
   } catch (e) { console.warn('convites', e); ui.convites = []; toast('Não consegui carregar a lista de convidados.'); }
   if (rotaAtual() === 'pessoas') render();
 }
+/* ───────── Painel do administrador: acompanhamento dos usuários ─────────
+   O administrador lê (não altera) os dados de cada pessoa para acompanhar o progresso. As regras do banco
+   liberam só a leitura, e o site avisa os convidados disso no Perfil e na criação da senha. */
+async function carregarUsuarios() {
+  ui.usuarios = null;                                     // null = carregando
+  try {
+    const q = await fb.fs.getDocs(fb.fs.collection(fb.db, 'usuarios'));
+    ui.usuarios = q.docs.map(d => Object.assign(abrirDados(d.data()), { uid: d.id })).filter(u => u.perfil);
+  } catch (e) { console.warn('usuarios', e); ui.usuarios = []; toast('Não consegui carregar os usuários.'); }
+  if (rotaAtual() === 'pessoas') render();
+}
+const haQuanto = ms => { if (!ms) return 'sem registro'; const d = diasEntre(new Date(ms - new Date(ms).getTimezoneOffset() * 60000).toISOString().slice(0, 10), hojeISO()); return d <= 0 ? 'hoje' : d === 1 ? 'ontem' : `há ${d} dias`; };
+// Números de acompanhamento de uma pessoa
+function resumoUsuario(u) {
+  const hoje = hojeISO(), ms = u.medidas || [], ss = u.sessoes || [], ultima = ms[ms.length - 1], primeira = ms[0];
+  const convite = (ui.convites || []).find(c => c.uid === u.uid || (u.conta && c.email === u.conta.email));
+  const diasDiario = new Set((u.diario || []).filter(x => x.data > dataMenos(hoje, 7)).map(x => x.data)).size;
+  return {
+    nome: u.perfil.nome || (convite && convite.nome) || '', email: (u.conta && u.conta.email) || (convite && convite.email) || '',
+    atividade: haQuanto(u.atualizadoEm), parado: !u.atualizadoEm || Date.now() - u.atualizadoEm > 7 * 86400000,
+    treinos7: ss.filter(s => s.data > dataMenos(hoje, 7)).length, meta: parseInt(u.perfil.dias, 10) || 0,
+    treinos28: ss.filter(s => s.data > dataMenos(hoje, 28)).length,
+    ultima, diasMedida: ultima ? diasEntre(ultima.data, hoje) : null,
+    variacaoPeso: ultima && primeira && ultima !== primeira ? ultima.peso - primeira.peso : null, desde: primeira ? primeira.data : null,
+    variacaoGordura: ultima && primeira && ultima !== primeira && ultima.gordura != null && primeira.gordura != null ? ultima.gordura - primeira.gordura : null,
+    diasDiario, removido: !!(convite && convite.removido)
+  };
+}
+const comSinal = (v, casas) => (Math.abs(v) < 0.05 ? '0' : (v > 0 ? '+' : '−') + n1(Math.abs(v), casas));
+function secaoUsuarios() {
+  if (ui.usuarios === undefined) carregarUsuarios();
+  const lista = ui.usuarios;
+  if (lista === null || lista === undefined) return '<div class="card"><h2>Usuários</h2><p class="suave">Carregando…</p></div>';
+  if (!lista.length) return '<div class="card"><h2>Usuários</h2><p class="suave">Ninguém fez o cadastro ainda. Quem você convidar aparece aqui depois de preencher os dados.</p></div>';
+  const rs = lista.map(u => ({ u, r: resumoUsuario(u) })).sort((a, b) => (b.u.atualizadoEm || 0) - (a.u.atualizadoEm || 0));
+  const ativos = rs.filter(x => !x.r.parado).length, emDia = rs.filter(x => x.r.meta && x.r.treinos7 >= x.r.meta).length, medidos = rs.filter(x => x.r.diasMedida !== null && x.r.diasMedida < 8).length;
+  const linhas = rs.map(({ u, r }) => `<tr>
+      <td><b>${esc(r.nome || r.email || 'Sem nome')}</b>${r.nome && r.email ? `<br><span class="suave mini">${esc(r.email)}</span>` : ''}${u.uid === nuvem.usuario.uid ? ' ' + selo('info', 'Você') : ''}${r.removido ? ' ' + selo('alerta', 'Acesso removido') : ''}</td>
+      <td>${selo(r.parado ? 'atencao' : 'bom', r.atividade)}</td>
+      <td>${r.treinos7} de ${r.meta || '–'}<br><span class="suave mini">${r.treinos28} em 28 dias</span></td>
+      <td>${r.ultima ? `${n1(r.ultima.peso)} kg${r.ultima.gordura != null ? ' · ' + n1(r.ultima.gordura) + '%' : ''}<br><span class="mini ${r.diasMedida >= 8 ? 'texto-atencao' : 'suave'}">${r.diasMedida === 0 ? 'hoje' : r.diasMedida === 1 ? 'ontem' : 'há ' + r.diasMedida + ' dias'}</span>` : '–'}</td>
+      <td>${r.variacaoPeso === null ? '–' : `${comSinal(r.variacaoPeso)} kg${r.variacaoGordura === null ? '' : `<br><span class="suave mini">gordura ${comSinal(r.variacaoGordura)} pts</span>`}`}</td>
+      <td>${r.diasDiario} de 7 dias</td>
+      <td class="acoes-linha"><button class="btn" data-acao="ver-usuario" data-valor="${esc(u.uid)}">Ver</button></td></tr>`).join('');
+  return `<div class="card"><div class="cabecalho" style="margin-bottom:12px"><div><h2>Usuários</h2><p class="suave pequeno">Quem já fez o cadastro, do mais recente para o mais parado. Você vê os dados, mas não altera.</p></div>
+      <div class="acoes"><button class="btn" data-acao="recarregar-usuarios">Atualizar</button></div></div>
+    <div class="tiles" style="margin-bottom:16px">
+      ${tile('Usuários', rs.length, '', '<span class="mini suave">com cadastro feito</span>')}
+      ${tile('Ativos na semana', ativos, '', `<span class="mini suave">de ${rs.length}</span>`)}
+      ${tile('Meta de treinos batida', emDia, '', '<span class="mini suave">nos últimos 7 dias</span>')}
+      ${tile('Medição em dia', medidos, '', '<span class="mini suave">nos últimos 7 dias</span>')}
+    </div>
+    <div class="rolagem-x"><table class="tabela quebra usuarios"><tr><th>Pessoa</th><th>Último uso</th><th>Treinos na semana</th><th>Última medição</th><th>Desde o início</th><th>Diário</th><th></th></tr>${linhas}</table></div></div>`;
+}
+function modalUsuario(uid) {
+  const u = (ui.usuarios || []).find(x => x.uid === uid); if (!u) return;
+  const r = resumoUsuario(u), p = u.perfil, a = analisar(p), pl = planoAlimentar(p, a), hoje = hojeISO();
+  const v = x => (x == null ? '–' : n1(x));
+  const diario = (() => {                                  // médias dos últimos 7 dias com registro
+    const porDia = {}; (u.diario || []).filter(x => x.data > dataMenos(hoje, 7)).forEach(x => { porDia[x.data] = (porDia[x.data] || 0) + (x.kcal || 0); });
+    const ds = Object.keys(porDia); return ds.length ? { dias: ds.length, kcal: Math.round(ds.reduce((t, d) => t + porDia[d], 0) / ds.length) } : null;
+  })();
+  const analiseIA = (u.analises || []).slice(-1)[0];
+  abrirModal(`${topoModal(esc(r.nome || r.email || 'Usuário'))}<div class="miolo solto">
+    <p class="suave pequeno">${esc(r.email)}${r.email ? ' · ' : ''}${a.idade} anos · ${n0(a.alturaCm)} cm · objetivo: ${OBJETIVOS[a.objetivo].nome.toLowerCase()} · ${NIVEIS[p.nivel].toLowerCase()} · último uso ${r.atividade}</p>
+    <div class="tiles" style="margin-top:14px">
+      ${tile('Peso', n1(a.peso), 'kg', r.variacaoPeso === null ? '' : `<span class="mini suave">${comSinal(r.variacaoPeso)} kg desde ${dataBR(r.desde)}</span>`)}
+      ${tile('Gordura corporal' + (a.gorduraMedida ? '' : ' (est.)'), n1(a.gordura), '%', selo(a.gorduraClasse.nivel, a.gorduraClasse.rotulo))}
+      ${a.visceral !== null ? tile('Gordura abdominal', n0(a.visceral), 'nível', selo(a.visceralClasse.nivel, a.visceralClasse.rotulo)) : ''}
+      ${a.musculo !== null ? tile('Músculo esquelético', n1(a.musculo), '%', selo(a.musculoClasse.nivel, a.musculoClasse.rotulo)) : ''}
+      ${tile('IMC', n1(a.imc), '', selo(a.imcClasse.nivel, a.imcClasse.rotulo))}
+      ${tile('Treinos', r.treinos7 + ' de ' + (r.meta || '–'), '', `<span class="mini suave">na semana · ${r.treinos28} em 28 dias</span>`)}
+    </div>
+    <h3 style="margin-top:20px">Medições</h3>
+    <div class="rolagem-x"><table class="tabela"><tr><th>Data</th><th>Peso (kg)</th><th>Gordura (%)</th><th>Abdominal</th><th>Músculo (%)</th><th>Repouso (kcal)</th></tr>
+      ${(u.medidas || []).slice(-8).reverse().map(m => `<tr><td>${dataBR(m.data)}</td><td>${v(m.peso)}</td><td>${v(m.gordura)}</td><td>${m.visceral == null ? '–' : n0(m.visceral)}</td><td>${v(m.musculo)}</td><td>${m.tmb == null ? '–' : n0(m.tmb)}</td></tr>`).join('') || '<tr><td colspan="6" class="suave">Sem medições.</td></tr>'}</table></div>
+    <h3 style="margin-top:20px">Treinos concluídos</h3>
+    <div class="rolagem-x"><table class="tabela"><tr><th>Data</th><th>Treino</th><th>Séries</th><th>Duração</th></tr>
+      ${(u.sessoes || []).slice(-8).reverse().map(s => `<tr><td>${dataBR(s.data)}</td><td>${esc('Treino ' + s.dia + (s.titulo ? ' · ' + s.titulo : ''))}</td><td>${s.feitas} de ${s.total}</td><td>${s.minutos ? s.minutos + ' min' : '–'}</td></tr>`).join('') || '<tr><td colspan="4" class="suave">Nenhum treino concluído.</td></tr>'}</table></div>
+    <h3 style="margin-top:20px">Alimentação</h3>
+    <p>Meta de ${n0(pl.kcal)} kcal e ${n0(pl.proteina)} g de proteína${pl.ajustado ? ', reestruturada em ' + dataBR(p.planoAjuste.desde) : ''}. ${diario ? `Nos últimos 7 dias registrou ${diario.dias} ${diario.dias === 1 ? 'dia' : 'dias'}, com média de ${n0(diario.kcal)} kcal.` : 'Sem registros no diário nos últimos 7 dias.'}</p>
+    ${analiseIA ? `<h3 style="margin-top:20px">Última análise de IA · ${dataBR(analiseIA.data)}</h3><p>${esc(analiseIA.resumo)}</p>${analiseIA.meta_semana ? `<div class="meta-semana"><span class="mini">Meta da semana</span><b>${esc(analiseIA.meta_semana)}</b></div>` : ''}` : ''}</div>`);
+}
+
 // Endereço e texto do convite. O link leva o e-mail e a senha provisória; só existe enquanto a pessoa não criou a própria senha.
 const linkConvite = p => location.origin + '/#convite=' + b64url(JSON.stringify({ e: p.email, c: p.chave }));
 const textoConvite = p => `${p.nome ? 'Oi, ' + p.nome.split(' ')[0] + '!' : 'Oi!'} Te convidei para o BioFicha, o app de treino e alimentação. ` +
@@ -451,9 +555,10 @@ function viewPessoas() {
       <td class="acoes-linha">${botoes(p)}</td></tr>`).join('');
   const novo = ui.conviteNovo && (lista || []).find(p => p.email === ui.conviteNovo && p.chave && !p.removido);
   return `
-    <div class="cabecalho"><div><h1>Pessoas</h1><p class="suave">Só entra no BioFicha quem você convidar aqui. Cada pessoa vê apenas os próprios dados.</p></div>
+    <div class="cabecalho"><div><h1>Administração</h1><p class="suave">Acompanhe quem usa o BioFicha e escolha quem entra. Só você vê esta tela.</p></div>
       <div class="acoes"><a class="btn" href="#/${estado.perfil ? 'perfil' : ''}">${estado.perfil ? 'Voltar ao Perfil' : 'Voltar ao cadastro'}</a></div></div>
     <div class="pilha">
+      ${secaoUsuarios()}
       <div class="card"><h2>Convidar</h2>
         <form id="form-convite" class="convite" novalidate>
           <label class="campo"><span>E-mail da pessoa</span><input class="entrada" id="cv-email" type="email" inputmode="email" autocomplete="off" value="${esc(c.email)}" placeholder="pessoa@exemplo.com"></label>
@@ -657,6 +762,7 @@ function concluirCadastro() {
   ['nivel', 'dias', 'refeicoes'].forEach(k => { r[k] = parseInt(r[k], 10); });
   Object.keys(r.bio).forEach(k => { const v = num(r.bio[k]); r.bio[k] = v === null ? '' : v; });
   r.nome = String(r.nome || '').trim();
+  if (antigo && r.planoAjuste && antigo.objetivo !== r.objetivo) { delete r.planoAjuste; estado.planoDesde = hojeISO(); }   // objetivo novo, metas novas
   estado.perfil = r;
   const a = analise();
   const mudouTreino = !antigo || ['nivel', 'dias', 'enfase', 'objetivo'].some(k => antigo[k] !== r[k]) ||
@@ -664,6 +770,7 @@ function concluirCadastro() {
   if (!antigo) {
     estado.ficha = gerarFicha(r, a.objetivo);
     estado.medidas = [medidaDoPerfil(r, hojeISO())];
+    estado.planoDesde = hojeISO();
   } else {
     const ultima = estado.medidas[estado.medidas.length - 1];
     const nova = medidaDoPerfil(r, hojeISO());
@@ -720,7 +827,7 @@ function viewPainel() {
       <p class="suave">${a.idade} anos · ${n0(a.alturaCm)} cm · ${n1(a.peso)} kg · objetivo: ${OBJETIVOS[a.objetivo].nome.toLowerCase()}</p></div>
       <div class="acoes"><a class="btn" href="#/evolucao">${ic('mais', 'p')}Nova medição</a></div></div>
 
-    <div class="duas">
+    <div class="tres">
       <div class="card destaque">
         <p class="pequeno suave">${escolhido && escolhido !== a.objetivoRecomendado ? 'Recomendação pelos seus números' : 'Seu plano'}</p>
         <h2 style="font-size:22px;margin:2px 0 8px">${OBJETIVOS[a.objetivoRecomendado].nome}</h2>
@@ -735,6 +842,7 @@ function viewPainel() {
           <span class="pequeno suave">Meta de hoje: ${n0(plano.kcal)} kcal · ${plano.proteina} g de proteína</span></div>`
         : '<p class="suave">Sua ficha está vazia. Monte uma em Minha ficha.</p>'}
       </div>
+      ${cartaoSemana()}
     </div>
 
     <div class="secao"><h2>Seus números</h2>
@@ -778,6 +886,8 @@ function viewFicha() {
   const outroEmCurso = estado.sessao && !s;
   const total = dia.itens.reduce((t, i) => t + (parseInt(i.series, 10) || 1), 0);
   const feitas = s ? dia.itens.reduce((t, i) => t + Math.min(s.feitas[i.ex] || 0, parseInt(i.series, 10) || 1), 0) : 0;
+  const exFeitos = s ? dia.itens.filter(i => (s.feitas[i.ex] || 0) >= (parseInt(i.series, 10) || 1)).length : 0;
+  const naSemana = treinosDaSemana();
 
   const itens = dia.itens.map((it, idx) => {
     const ex = exDe(it.ex); if (!ex) return '';
@@ -790,7 +900,8 @@ function viewFicha() {
         <button class="nome" data-acao="ver" data-valor="${ex.id}">${esc(ex.nome)}</button>
         <div class="acoes mini suave" style="gap:6px"><span>${GRUPOS[ex.grupo]}</span>${av.status === 'atencao' || av.status === 'sem_equip' ? selo(av.status === 'atencao' ? 'atencao' : '', av.rotulo) : ''}</div>
         ${s ? `<div class="series">${Array.from({ length: nSeries }, (_, i) => `<button class="serie ${i < ok ? 'feita' : ''}" data-acao="serie" data-ex="${ex.id}" data-valor="${i + 1}" aria-label="Série ${i + 1}${i < ok ? ' feita' : ''}">${i < ok ? ic('check', 'p') : i + 1}</button>`).join('')}
-            <span class="pequeno suave">${esc(it.reps)}${cardio ? '' : ' reps'}${it.descanso ? ' · descanso ' + it.descanso + ' s' : ''}</span></div>` : ''}
+            <span class="pequeno suave">${esc(it.reps)}${cardio ? '' : ' reps'}${it.descanso ? ' · descanso ' + it.descanso + ' s' : ''}</span></div>
+          <button class="btn concluir-ex ${ok >= nSeries ? 'feito' : ''}" data-acao="concluir-ex" data-ex="${ex.id}">${ic('check', 'p')}${ok >= nSeries ? 'Concluído' : 'Concluir exercício'}</button>` : ''}
         <div class="param">
           ${s ? '' : `<label>Séries<input data-item="${idx}" data-prop="series" inputmode="numeric" value="${esc(it.series)}" aria-label="Séries"></label>
           <label>${cardio ? 'Tempo' : 'Repetições'}<input class="largo" data-item="${idx}" data-prop="reps" value="${esc(it.reps)}" aria-label="Repetições"></label>
@@ -814,11 +925,11 @@ function viewFicha() {
     <div class="cabecalho"><div><h1>Minha ficha</h1><p class="suave">${f.dias.length} ${f.dias.length === 1 ? 'treino' : 'treinos'} · objetivo: ${OBJETIVOS[analise().objetivo].nome.toLowerCase()}</p></div>
       <div class="acoes"><button class="btn" data-acao="gerar-ficha">${ic('raio', 'p')}Montar ficha recomendada</button>
       <button class="btn" data-acao="imprimir">${ic('imprimir', 'p')}Imprimir</button></div></div>
-    <div class="abas">${f.dias.map(d => `<button class="aba ${d.id === dia.id ? 'ativo' : ''}" data-acao="dia" data-valor="${d.id}"><b>${esc(d.nome)}</b><span>${esc(d.titulo || d.itens.length + ' exercícios')}</span></button>`).join('')}
+    <div class="abas">${f.dias.map(d => `<button class="aba ${d.id === dia.id ? 'ativo' : ''} ${naSemana.has(d.id) ? 'feita' : ''}" data-acao="dia" data-valor="${d.id}"><b>${esc(d.nome)}${naSemana.has(d.id) ? ic('check', 'p') : ''}</b><span>${naSemana.has(d.id) ? 'Feito esta semana' : esc(d.titulo || d.itens.length + ' exercícios')}</span></button>`).join('')}
       ${f.dias.length < 7 ? `<button class="aba" data-acao="novo-dia"><b>${ic('mais', 'p')}</b><span>Novo treino</span></button>` : ''}</div>
     <div class="dia-tela">
-      ${s ? `<div class="treinando"><div class="cabecalho" style="margin:0"><div><h2>${esc(dia.nome)} em andamento</h2><p class="suave pequeno">${feitas} de ${total} séries · toque no número da série ao terminar</p></div>
-          <div class="acoes"><button class="btn" data-acao="cancelar-treino">Cancelar</button><button class="btn primario" data-acao="concluir-treino">${ic('check', 'p')}Concluir treino</button></div></div>
+      ${s ? `<div class="treinando"><div class="cabecalho" style="margin:0"><div><h2>${esc(dia.nome)} em andamento</h2><p class="suave pequeno">${exFeitos} de ${dia.itens.length} exercícios · ${feitas} de ${total} séries. Toque na série ao terminar, ou conclua o exercício inteiro.</p></div>
+          <div class="acoes"><button class="btn" data-acao="cancelar-treino">Cancelar</button><button class="btn primario ${exFeitos === dia.itens.length ? 'pronto' : ''}" data-acao="concluir-treino">${ic('check', 'p')}Concluir treino</button></div></div>
           <div class="progresso"><i style="width:${total ? feitas / total * 100 : 0}%"></i></div></div>`
       : `<div class="cabecalho" style="margin-bottom:14px"><div><h2>${esc(dia.titulo || dia.nome)}</h2>${dia.foco ? `<p class="suave pequeno">${esc(dia.foco)}</p>` : ''}</div>
           <div class="acoes"><button class="btn perigo" data-acao="excluir-dia">Excluir treino</button>
@@ -924,7 +1035,7 @@ function viewAlimentacao() {
     ${grupo('Proteína', 'escolha uma', r.prot)}${grupo('Carboidrato', 'escolha um', r.carb)}${grupo('Gordura boa', 'escolha uma', r.gord)}
     ${r.fixos.length || r.salada ? `<div class="grupo-ali"><div class="tit">Acompanha</div><ul>${r.fixos.map(t => `<li>${esc(t)}</li>`).join('')}${r.salada ? '<li>Salada e legumes à vontade</li>' : ''}</ul></div>` : ''}</div>`;
   return `
-    <div class="cabecalho"><div><h1>Alimentação</h1><p class="suave">Plano para ${OBJETIVOS[pl.objetivo].nome.toLowerCase()}, calculado com o seu metabolismo e a sua rotina.</p></div></div>
+    <div class="cabecalho"><div><h1>Alimentação</h1><p class="suave">Plano para ${OBJETIVOS[pl.objetivo].nome.toLowerCase()}, ${pl.ajustado ? 'reestruturado pela IA em ' + dataBR(p.planoAjuste.desde) : 'calculado com o seu metabolismo e a sua rotina'}.</p></div></div>
     <div class="duas">
       <div class="card destaque"><p class="pequeno suave">Meta diária</p><p class="heroi">${n0(pl.kcal)} <small>kcal</small></p>
         <p style="margin-top:10px">${ajusteTxt.charAt(0).toUpperCase() + ajusteTxt.slice(1)}. ${ritmo}</p></div>
@@ -936,6 +1047,8 @@ function viewAlimentacao() {
         ${tile('Fibras', pl.fibra, 'g', '<span class="mini suave">frutas, legumes e grãos</span>')}
       </div>
     </div>
+    <div class="secao">${cartaoReestruturar()}</div>
+    ${secaoDiario(pl)}
     <div class="secao">
       <div class="cabecalho" style="margin-bottom:12px"><h2>Refeições do dia</h2>
         <div class="acoes"><div class="chips">${[3, 4, 5, 6].map(n => `<button class="chip ${pl.refeicoes.length === n ? 'ativo' : ''}" data-acao="perfil-set" data-campo="refeicoes" data-valor="${n}">${n}</button>`).join('')}</div>
@@ -1000,8 +1113,9 @@ function viewEvolucao() {
   const v = x => (x == null ? '–' : n1(x));
   const c = (rot, id, un, ex) => `<label class="campo"><span>${rot}</span><div class="com-unidade"><input class="entrada" id="m-${id}" inputmode="decimal" placeholder="${ex}"><i>${un}</i></div></label>`;
   return `
-    <div class="cabecalho"><div><h1>Evolução</h1><p class="suave">Registre peso e bioimpedância a cada 3 ou 4 semanas. O plano se recalcula com os números novos.</p></div></div>
-    <div class="graficos">${grafico('Peso', serie('peso'), 'kg', 1)}${grafico('Gordura corporal', serie('gordura'), '%', 1)}${serie('musculo').length ? grafico('Músculo esquelético', serie('musculo'), '%', 1) : ''}${grafico('Massa magra', magra, 'kg', 1)}</div>
+    <div class="cabecalho"><div><h1>Evolução</h1><p class="suave">Lance o peso e a bioimpedância toda semana. A IA analisa a evolução e o plano se recalcula com os números novos.</p></div></div>
+    ${cartaoAnalise()}
+    <div class="graficos secao">${grafico('Peso', serie('peso'), 'kg', 1)}${grafico('Gordura corporal', serie('gordura'), '%', 1)}${serie('musculo').length ? grafico('Músculo esquelético', serie('musculo'), '%', 1) : ''}${grafico('Massa magra', magra, 'kg', 1)}</div>
 
     <div class="secao card"><h2>Registrar nova medição</h2>
       <div class="grade-campos">
@@ -1040,10 +1154,10 @@ function viewPerfil() {
         ${linha('Nível', NIVEIS[p.nivel])}${linha('Treinos por semana', p.dias)}
         ${linha('Equipamentos', lista(p.equip, EQUIPAMENTOS, 'Só peso do corpo'))}${linha('Cuidados', lista(p.restricoes, RESTRICOES, 'Nenhum'))}</table></div>
       <div class="pilha">
-        ${NUVEM ? `<div class="card"><h2>Conta</h2><p class="suave pequeno quebra-email">Conectado como <b>${esc(emailConta())}</b>. Seus dados ficam guardados na sua conta e aparecem em qualquer aparelho em que você entrar.</p>
+        ${NUVEM ? `<div class="card"><h2>Conta</h2><p class="suave pequeno quebra-email">Conectado como <b>${esc(emailConta())}</b>. Seus dados ficam guardados na sua conta e aparecem em qualquer aparelho em que você entrar.${ehAdmin() ? '' : ' Quem administra o BioFicha acompanha o seu progresso: medições, treinos e alimentação.'}</p>
           <div class="acoes" style="margin-top:12px"><button class="btn" data-acao="sair">Sair</button></div></div>` : ''}
-        ${ehAdmin() ? `<div class="card"><h2>Pessoas</h2><p class="suave pequeno">O acesso ao BioFicha é por convite. Você escolhe quem entra e manda para a pessoa o link para ela criar a senha.</p>
-          <div class="acoes" style="margin-top:12px"><a class="btn primario" href="#/pessoas">Convidar e gerenciar</a></div></div>` : ''}
+        ${ehAdmin() ? `<div class="card"><h2>Administração</h2><p class="suave pequeno">Acompanhe o progresso de quem usa o BioFicha e escolha quem entra: você cria o convite e manda o link para a pessoa criar a senha.</p>
+          <div class="acoes" style="margin-top:12px"><a class="btn primario" href="#/pessoas">Abrir painel do administrador</a></div></div>` : ''}
         <div class="card"><h2>Cópia de segurança</h2><p class="suave pequeno">${NUVEM
           ? 'Baixe uma cópia dos seus dados em arquivo, ou restaure aqui uma cópia feita em outro lugar (por exemplo, no site aberto direto do computador).'
           : 'Os dados ficam salvos só neste navegador. Baixe uma cópia para não perder nada ou para levar a outro computador.'}</p>
@@ -1153,6 +1267,17 @@ const ACOES = {
     const item = diaAtual().itens.find(i => i.ex === ex);
     if (s.feitas[ex] > antes && item) iniciarDescanso(parseInt(item.descanso, 10) || 0);
   },
+  // Conclui (ou desfaz) o exercício inteiro de uma vez, sem tocar série por série
+  'concluir-ex'(el) {
+    const s = estado.sessao, dia = diaAtual(), item = dia.itens.find(i => i.ex === el.dataset.ex); if (!s || !item) return;
+    const n = parseInt(item.series, 10) || 1, completo = (s.feitas[item.ex] || 0) >= n;
+    s.feitas[item.ex] = completo ? 0 : n;
+    salvar(); render();
+    if (!completo) {
+      const faltam = dia.itens.filter(i => (s.feitas[i.ex] || 0) < (parseInt(i.series, 10) || 1)).length;
+      toast(faltam ? `Exercício concluído. ${faltam === 1 ? 'Falta 1' : 'Faltam ' + faltam}.` : 'Todos os exercícios feitos. Toque em Concluir treino.');
+    }
+  },
   'cancelar-treino'() { if (!confirm('Cancelar o treino em andamento? As séries marcadas serão descartadas.')) return; estado.sessao = null; pararDescanso(); salvar(); render(); },
   'concluir-treino'() {
     const s = estado.sessao, dia = estado.ficha.dias.find(d => d.id === s.dia); if (!dia) { estado.sessao = null; salvar(); return render(); }
@@ -1198,6 +1323,8 @@ const ACOES = {
       ['gordura', 'visceral', 'musculo', 'tmb'].forEach(k => { if (m[k] !== null) estado.perfil.bio[k] = m[k]; });
     }
     salvar(); render(); toast('Medição salva. Plano recalculado.');
+    // medição mais recente lançada no site publicado: já pede a análise da semana
+    if (iaDisponivel() && estado.medidas[estado.medidas.length - 1].data === data) gerarAnalise();
   },
   'apagar-medida'(el) {
     if (!confirm('Apagar a medição de ' + dataBR(el.dataset.valor) + '?')) return;
@@ -1228,7 +1355,9 @@ const ACOES = {
     } catch (e) { console.warn('confirmacao', e); nuvem.erro = ERROS_CONTA[e.code] || 'Não consegui enviar o link. Tente de novo.'; }
     nuvem.ocupado = false; render();
   },
-  // Pessoas (administrador)
+  // Administração
+  'ver-usuario'(el) { modalUsuario(el.dataset.valor); },
+  'recarregar-usuarios'() { carregarUsuarios(); render(); },
   async 'copiar-convite'(el) {
     const p = (ui.convites || []).find(x => x.email === el.dataset.valor);
     if (!p || !p.chave) return toast('Este convite não tem mais link: a pessoa já criou a senha.');
@@ -1261,6 +1390,8 @@ const ACOES = {
   'crono-pular'() { pararDescanso(); }
 };
 
+Object.assign(ACOES, ACOES_IA);
+
 function atualizarGrade() { const g = $('#grade'); if (g) g.innerHTML = gradeExercicios(); else render(); }
 
 document.addEventListener('click', ev => {
@@ -1274,6 +1405,7 @@ document.addEventListener('input', ev => {
     if (k.startsWith('bio.')) ui.rascunho.bio[k.slice(4)] = t.value; else ui.rascunho[k] = t.value;
   } else if (t.id === 'busca') { ui.filtro.busca = t.value; atualizarGrade(); }
   else if (t.id === 'c-email') nuvem.email = t.value;
+  else if (campoDiario(t)) { /* guardado no rascunho do diário */ }
   else if ((t.id === 'cv-email' || t.id === 'cv-nome') && ui.convite) ui.convite[t.id.slice(3)] = t.value;
 });
 document.addEventListener('submit', ev => {
@@ -1284,6 +1416,7 @@ document.addEventListener('submit', ev => {
 document.addEventListener('change', ev => {
   const t = ev.target;
   if (t.id === 'filtro-equip') { ui.filtro.equip = t.value; atualizarGrade(); }
+  else if (t.id === 'd-data' || t.id === 'd-refeicao') { campoDiario(t); rascunhoDiario().erro = ''; render(); }
   else if (t.dataset.item != null) {
     const it = diaAtual().itens[parseInt(t.dataset.item, 10)], prop = t.dataset.prop;
     if (!it) return;

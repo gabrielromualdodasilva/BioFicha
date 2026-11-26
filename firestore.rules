@@ -5,7 +5,8 @@ rules_version = '2';
 //   Campos: email, nome, criadoEm, removido, uid (id da conta criada pelo convite), chave (senha provisória do link,
 //   apagada quando a pessoa cria a própria senha), entrouEm.
 // - usuarios/<id da conta>: os dados de cada pessoa. Só a própria pessoa lê e grava, e só com convite valendo.
-// Todo o resto é negado. O administrador não lê os dados das outras pessoas.
+//   O administrador lê (não altera) os dados de todos, para o painel de acompanhamento; o site avisa os convidados.
+// Todo o resto é negado.
 service cloud.firestore {
   match /databases/{database}/documents {
 
@@ -31,7 +32,11 @@ service cloud.firestore {
 
     match /usuarios/{uid} {
       allow read, write: if logado() && request.auth.uid == uid && (ehAdmin() || convidado());
+      // Painel do administrador: só leitura, para acompanhar o progresso de cada pessoa
+      allow read: if ehAdmin();
     }
+
+    // uso/<id da conta>: contador diário de pedidos à IA. Só o servidor (functions) lê e grava.
 
     match /convites/{email} {
       allow read, delete: if ehAdmin();

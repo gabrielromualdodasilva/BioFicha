@@ -20,7 +20,8 @@
       "**/.firebase/**",
       "**/node_modules/**",
       "bioficha-*.json",
-      "ficha-academia-*.json"
+      "ficha-academia-*.json",
+      "functions/**"
     ],
     "headers": [
       {
@@ -68,5 +69,19 @@
         ]
       }
     ]
-  }
+  },
+  "functions": [
+    {
+      "source": "functions",
+      "codebase": "default",
+      "runtime": "nodejs22",
+      "ignore": [
+        "node_modules",
+        ".git",
+        "firebase-debug.log",
+        "firebase-debug.*.log",
+        "*.local"
+      ]
+    }
+  ]
 }

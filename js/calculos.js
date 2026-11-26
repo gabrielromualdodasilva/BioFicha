@@ -304,10 +304,14 @@ function planoAlimentar(perfil, analise) {
   const pesoRef = a.gorduraAlta ? a.massaMagra / (1 - gAlvo) : a.peso;
   const protKg = { emagrecer: 2.0, recomposicao: 2.0, hipertrofia: 1.8, saude: 1.4 }[obj];
   let gordKg = { emagrecer: 0.8, recomposicao: 0.9, hipertrofia: 1.0, saude: 1.0 }[obj];
-  const proteina = Math.round(pesoRef * protKg);
+  let proteina = Math.round(pesoRef * protKg);
   let gordura = Math.round(Math.min(Math.max(pesoRef * gordKg, kcal * 0.20 / 9), kcal * 0.35 / 9));
   let carbo = Math.round((kcal - proteina * 4 - gordura * 9) / 4);
   if (carbo < 80) { gordura = Math.round(Math.max(pesoRef * 0.6, kcal * 0.18 / 9)); carbo = Math.max(50, Math.round((kcal - proteina * 4 - gordura * 9) / 4)); }
+
+  // Metas reestruturadas (perfil.planoAjuste) valem no lugar das calculadas
+  const aj = perfil.planoAjuste, ajustado = !!(aj && num(aj.kcal) && num(aj.proteina) && num(aj.carbo) && num(aj.gordura));
+  if (ajustado) { kcal = num(aj.kcal); proteina = num(aj.proteina); carbo = num(aj.carbo); gordura = num(aj.gordura); }
 
   const dia = { kcal, proteina, carbo, gordura };
   const veg = perfil.dieta === 'vegetariana';
@@ -347,7 +351,7 @@ function planoAlimentar(perfil, analise) {
 
   return {
     objetivo: obj, kcal, proteina, carbo, gordura, ajuste, diferenca, kgSemana, agua,
-    fibra: Math.round(kcal / 1000 * 14), pesoRef, protKg, refeicoes, dicas, veg
+    fibra: Math.round(kcal / 1000 * 14), pesoRef, protKg: ajustado ? proteina / pesoRef : protKg, refeicoes, dicas, veg, ajustado
   };
 }
 
