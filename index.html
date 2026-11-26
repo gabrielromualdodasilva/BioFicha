@@ -1,0 +1,27 @@
+<!doctype html>
+<html lang="pt-BR">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1, viewport-fit=cover">
+  <title>BioFicha</title>
+  <meta name="description" content="Ficha de treino, análise de bioimpedância e plano alimentar personalizados.">
+  <link rel="icon" href="data:image/svg+xml,%3Csvg xmlns='http://www.w3.org/2000/svg' viewBox='0 0 24 24'%3E%3Crect width='24' height='24' rx='6' fill='%231c7449'/%3E%3Cpath d='M5 10v4M8 7v10M16 7v10M19 10v4M8 12h8' stroke='%23fff' stroke-width='2' stroke-linecap='round' fill='none'/%3E%3C/svg%3E">
+  <link rel="stylesheet" href="css/estilo.css">
+</head>
+<body>
+  <div id="app" class="app"></div>
+  <div id="modal" hidden></div>
+  <div id="cronometro" class="cronometro" hidden>
+    <span class="mini">Descanso</span><span class="tempo">0:00</span>
+    <span><button data-acao="crono-mais">+15 s</button> <button data-acao="crono-pular">Pular</button></span>
+  </div>
+  <div id="toast" class="toast" role="status" hidden></div>
+  <noscript><p style="padding:24px">Este site precisa de JavaScript ativado para funcionar.</p></noscript>
+
+  <script src="js/exercicios.js"></script>
+  <script src="js/musculos.js"></script>
+  <script src="js/calculos.js"></script>
+  <script src="js/treino.js"></script>
+  <script src="js/app.js"></script>
+</body>
+</html>
