@@ -141,11 +141,13 @@ function sessoesDemo() {
 
 /* ───────── Roteamento e moldura ───────── */
 const ROTAS = [
-  ['painel', 'Painel'], ['ficha', 'Minha ficha'], ['exercicios', 'Exercícios'],
-  ['alimentacao', 'Alimentação'], ['evolucao', 'Evolução'], ['perfil', 'Perfil']
+  ['painel', 'Painel'], ['ficha', 'Minha ficha'], ['alimentacao', 'Alimentação'], ['evolucao', 'Evolução'], ['perfil', 'Perfil']
 ];
-// "pessoas" (convites) não fica no menu: só o administrador chega nela, pelo Perfil
-const rotaAtual = () => { const r = location.hash.replace(/^#\/?/, ''); return ROTAS.some(x => x[0] === r) || (r === 'pessoas' && ehAdmin()) ? r : 'painel'; };
+// Fora do menu: "exercicios" é uma aba de Minha ficha (e atalho no Perfil); "pessoas" é só do administrador, pelo Perfil
+const rotaAtual = () => { const r = location.hash.replace(/^#\/?/, ''); return ROTAS.some(x => x[0] === r) || r === 'exercicios' || (r === 'pessoas' && ehAdmin()) ? r : 'painel'; };
+const subabasFicha = ativa => `<div class="subabas" role="tablist" aria-label="Minha ficha">
+    <a class="subaba ${ativa === 'ficha' ? 'ativo' : ''}" href="#/ficha" role="tab" aria-selected="${ativa === 'ficha'}">Meus treinos</a>
+    <a class="subaba ${ativa === 'exercicios' ? 'ativo' : ''}" href="#/exercicios" role="tab" aria-selected="${ativa === 'exercicios'}">Todos os exercícios <span class="conta">${EXERCICIOS.length}</span></a></div>`;
 
 function render() {
   const app = $('#app');
@@ -169,7 +171,7 @@ function render() {
   app.innerHTML = `
     <nav class="lateral" aria-label="Seções">
       <div class="logo"><span class="logo-marca">${ic('exercicios')}</span>BioFicha</div>
-      ${ROTAS.map(([r, nome]) => `<a class="nav-item ${r === rota || (r === 'perfil' && rota === 'pessoas') ? 'ativo' : ''}" href="#/${r}">${ic(r)}<span>${r === 'ficha' ? '<span class="so-largo">Minha </span>ficha' : r === 'alimentacao' ? '<span class="so-largo">Alimentação</span><span class="so-estreito">Dieta</span>' : nome}</span></a>`).join('')}
+      ${ROTAS.map(([r, nome]) => `<a class="nav-item ${r === rota || (r === 'perfil' && rota === 'pessoas') || (r === 'ficha' && rota === 'exercicios') ? 'ativo' : ''}" href="#/${r}">${ic(r)}<span>${r === 'ficha' ? '<span class="so-largo">Minha </span>ficha' : nome}</span></a>`).join('')}
       <div class="rodape mini suave" id="situacao">${DEMO ? 'Modo demonstração: dados de exemplo.' : NUVEM ? textoSituacao() : 'Seus dados ficam salvos só neste navegador.'}</div>
     </nav>
     <main class="conteudo" id="conteudo">${VIEWS[rota]()}</main>`;
@@ -890,7 +892,7 @@ function viewPainel() {
 function viewFicha() {
   const f = estado.ficha, p = estado.perfil;
   if (!f || !f.dias.length) {
-    return `<div class="cabecalho"><div><h1>Minha ficha</h1></div></div>
+    return `<div class="cabecalho"><div><h1>Minha ficha</h1></div></div>${subabasFicha('ficha')}
       <div class="vazio"><p>Você ainda não tem treinos.</p><div class="acoes" style="justify-content:center;margin-top:14px">
       <button class="btn primario" data-acao="gerar-ficha">Montar ficha recomendada</button><button class="btn" data-acao="novo-dia">Criar treino vazio</button></div></div>`;
   }
@@ -937,6 +939,7 @@ function viewFicha() {
     <div class="cabecalho"><div><h1>Minha ficha</h1><p class="suave">${f.dias.length} ${f.dias.length === 1 ? 'treino' : 'treinos'} · objetivo: ${OBJETIVOS[analise().objetivo].nome.toLowerCase()}</p></div>
       <div class="acoes"><button class="btn" data-acao="gerar-ficha">${ic('raio', 'p')}Montar ficha recomendada</button>
       <button class="btn" data-acao="imprimir">${ic('imprimir', 'p')}Imprimir</button></div></div>
+    ${subabasFicha('ficha')}
     <div class="abas">${f.dias.map(d => `<button class="aba ${d.id === dia.id ? 'ativo' : ''} ${naSemana.has(d.id) ? 'feita' : ''}" data-acao="dia" data-valor="${d.id}"><b>${esc(d.nome)}${naSemana.has(d.id) ? ic('check', 'p') : ''}</b><span>${naSemana.has(d.id) ? 'Feito esta semana' : esc(d.titulo || d.itens.length + ' exercícios')}</span></button>`).join('')}
       ${f.dias.length < 7 ? `<button class="aba" data-acao="novo-dia"><b>${ic('mais', 'p')}</b><span>Novo treino</span></button>` : ''}</div>
     <div class="dia-tela">
@@ -982,7 +985,8 @@ function viewExercicios() {
   const f = ui.filtro;
   const chip = (v, t) => `<button class="chip ${f.grupo === v ? 'ativo' : ''}" data-acao="filtro-grupo" data-valor="${v}">${t}</button>`;
   return `
-    <div class="cabecalho"><div><h1>Exercícios</h1><p class="suave">Marque a caixa para colocar o exercício na sua ficha. Clique na foto para ver a execução.</p></div></div>
+    <div class="cabecalho"><div><h1>Minha ficha</h1><p class="suave">Todos os ${EXERCICIOS.length} exercícios do BioFicha. Marque a caixa para colocar na sua ficha; toque na foto para ver a execução.</p></div></div>
+    ${subabasFicha('exercicios')}
     <div class="filtros">
       <div class="linha-filtros">
         <input class="entrada" id="busca" type="search" placeholder="Buscar exercício…" value="${esc(f.busca)}" aria-label="Buscar exercício">
@@ -1170,6 +1174,8 @@ function viewPerfil() {
           <div class="acoes" style="margin-top:12px"><button class="btn" data-acao="sair">Sair</button></div></div>` : ''}
         ${ehAdmin() ? `<div class="card"><h2>Administração</h2><p class="suave pequeno">Acompanhe o progresso de quem usa o BioFicha e escolha quem entra: você cria o convite e manda o link para a pessoa criar a senha.</p>
           <div class="acoes" style="margin-top:12px"><a class="btn primario" href="#/pessoas">Abrir painel do administrador</a></div></div>` : ''}
+        <div class="card"><h2>Exercícios</h2><p class="suave pequeno">O BioFicha tem ${EXERCICIOS.length} exercícios com foto e explicação. ${estado.ficha ? new Set(estado.ficha.dias.flatMap(d => d.itens.map(i => i.ex))).size : 0} estão na sua ficha.</p>
+          <div class="acoes" style="margin-top:12px"><a class="btn" href="#/exercicios">Ver todos os exercícios</a></div></div>
         <div class="card"><h2>Cópia de segurança</h2><p class="suave pequeno">${NUVEM
           ? 'Baixe uma cópia dos seus dados em arquivo, ou restaure aqui uma cópia feita em outro lugar (por exemplo, no site aberto direto do computador).'
           : 'Os dados ficam salvos só neste navegador. Baixe uma cópia para não perder nada ou para levar a outro computador.'}</p>
