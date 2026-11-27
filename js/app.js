@@ -994,7 +994,8 @@ function viewFicha() {
           <div class="acoes"><button class="btn" data-acao="cancelar-treino">Cancelar</button><button class="btn primario ${exFeitos === dia.itens.length ? 'pronto' : ''}" data-acao="concluir-treino">${ic('check', 'p')}Concluir treino</button></div></div>
           <div class="progresso"><i style="width:${total ? feitas / total * 100 : 0}%"></i></div></div>`
       : `<div class="cabecalho" style="margin-bottom:14px"><div><h2>${esc(dia.titulo || dia.nome)}</h2>${dia.foco ? `<p class="suave pequeno">${esc(dia.foco)}</p>` : ''}</div>
-          <div class="acoes"><button class="btn perigo" data-acao="excluir-dia">Excluir treino</button>
+          <div class="acoes acoes-dia"><button class="btn perigo" data-acao="excluir-dia">Excluir treino</button>
+          <button class="btn" data-acao="registrar-treino" ${dia.itens.length ? '' : 'disabled'}>${ic('check', 'p')}<span class="so-largo">Registrar treino já feito</span><span class="so-celular">Já fiz este treino</span></button>
           <button class="btn primario" data-acao="iniciar-treino" ${dia.itens.length && !outroEmCurso ? '' : 'disabled'}>${ic('play', 'p')}Iniciar treino</button></div></div>
           ${outroEmCurso ? '<p class="aviso" style="margin-bottom:12px">Há outro treino em andamento. Conclua ou cancele antes de iniciar este.</p>' : ''}`}
       <div class="pilha" style="gap:10px">${itens || '<div class="vazio">Nenhum exercício neste treino ainda.</div>'}</div>
@@ -1084,6 +1085,62 @@ function modalTrocar(idx) {
   abrirModal(`${topoModal('Trocar exercício')}<div class="miolo"><p class="suave">Opções que trabalham o mesmo movimento de <b>${esc(exDe(atual.ex).nome)}</b>.</p>
     ${alts.length ? alts.map(({ ex, av }) => `<button class="alt" data-acao="trocar-por" data-valor="${ex.id}" data-idx="${idx}">${anim(ex.id, true)}<span><b>${esc(ex.nome)}</b><br><span class="mini suave">${EQUIPAMENTOS[ex.equip]}</span><br>${selo(av.status, av.rotulo)}</span></button>`).join('')
       : '<div class="vazio">Não há outra opção compatível com seus equipamentos para este movimento.</div>'}</div>`);
+}
+
+/* Registrar um treino feito sem o app aberto (ontem, ou hoje sem ter tocado em Iniciar):
+   entra no histórico como os outros, com a duração informada, e conta na constância e no gasto de calorias. */
+const dataMenosDias = n => { const d = new Date(hojeISO() + 'T12:00:00'); d.setDate(d.getDate() - n); return d.toISOString().slice(0, 10); };
+function minutosDoDia(dia) {
+  const est = dia.itens.reduce((t, i) => { const ex = exDe(i.ex), n = parseInt(i.series, 10) || 1; return ex ? t + minutosEstimados(ex, i, n, n) : t; }, 0);
+  return Math.min(240, Math.max(10, Math.round(est / 5) * 5));
+}
+function modalRegistrarTreino(diaId, data, minutos, erro) {
+  const dias = estado.ficha.dias.filter(d => d.itens.length);
+  const dia = dias.find(d => d.id === diaId) || dias.find(d => d.id === (diaAtual() || {}).id) || dias[0];
+  if (!dia) return;
+  const hoje = hojeISO(), quando = data || hoje;
+  ui.registro = { dia: dia.id };
+  const atalho = (n, nome) => { const v = dataMenosDias(n); return `<button type="button" class="flag ${quando === v ? 'ativo' : ''}" data-acao="rg-quando" data-valor="${v}">${nome}</button>`; };
+  abrirModal(`${topoModal('Registrar treino já feito')}
+    <form class="miolo" id="form-registro" novalidate>
+      <p class="suave pequeno">Para o treino que você fez sem o app aberto. Ele entra no histórico, na constância e no gasto de calorias como os outros.</p>
+      <label class="campo"><span>Treino</span><select class="entrada" id="rg-dia">${dias.map(d => `<option value="${d.id}" ${d.id === dia.id ? 'selected' : ''}>${esc(d.nome + (d.titulo ? ' · ' + d.titulo : ''))}</option>`).join('')}</select></label>
+      <div class="campo"><span>Quando</span><div class="chips rg-quando" style="margin:0 0 8px">${atalho(0, 'Hoje')}${atalho(1, 'Ontem')}${atalho(2, 'Anteontem')}</div>
+        <input class="entrada" type="date" id="rg-data" value="${quando}" max="${hoje}" aria-label="Data do treino"></div>
+      <label class="campo"><span>Duração (minutos)</span><input class="entrada" id="rg-min" inputmode="numeric" value="${minutos || minutosDoDia(dia)}" aria-describedby="rg-min-dica">
+        <small id="rg-min-dica">Do aquecimento ao último exercício. O valor sugerido é a estimativa pelos exercícios, séries e descansos.</small></label>
+      <div class="campo"><span>Exercícios que você fez</span>
+        <div class="rg-lista">${dia.itens.map(i => { const ex = exDe(i.ex); if (!ex) return ''; const n = parseInt(i.series, 10) || 1;
+          return `<label class="rg-ex"><input type="checkbox" name="rg-ex" value="${ex.id}" checked><span><b>${esc(ex.nome)}</b><br><span class="mini suave">${n} × ${esc(i.reps)}${ex.padrao === 'cardio' ? '' : ' reps'}${num(i.carga) ? ' · ' + esc(i.carga) + ' kg' : ''}</span></span></label>`; }).join('')}</div>
+        <small>Desmarque o que você não fez. As séries e cargas são as da ficha.</small></div>
+      ${erro ? `<p class="aviso erro" role="alert">${esc(erro)}</p>` : ''}
+      <div class="acoes" style="justify-content:flex-end"><button type="button" class="btn" data-acao="fechar-modal" data-forcar="1">Cancelar</button>
+        <button class="btn primario" type="submit">${ic('check', 'p')}Registrar treino</button></div>
+    </form>`, true);
+  if (erro) $('#modal [role="alert"]').scrollIntoView({ block: 'nearest' });
+}
+// Lê o que está preenchido na janela (para trocar o treino sem perder a data e a duração)
+const valoresRegistro = () => ({ data: ($('#rg-data') || {}).value || '', minutos: ($('#rg-min') || {}).value || '' });
+function salvarRegistroTreino() {
+  const dia = estado.ficha.dias.find(d => d.id === (ui.registro || {}).dia); if (!dia) return fecharModal();
+  const { data, minutos } = valoresRegistro(), min = parseInt(minutos, 10), hoje = hojeISO();
+  const marcados = new Set([...document.querySelectorAll('input[name="rg-ex"]:checked')].map(c => c.value));
+  const erro = !/^\d{4}-\d{2}-\d{2}$/.test(data) ? 'Escolha a data do treino.'
+    : data > hoje ? 'A data não pode ser depois de hoje.'
+    : data < dataMenosDias(365) ? 'Escolha uma data dentro do último ano.'
+    : !(min >= 5 && min <= 240) ? 'Informe a duração entre 5 e 240 minutos.'
+    : !marcados.size ? 'Marque pelo menos um exercício que você fez.' : '';
+  if (erro) return modalRegistrarTreino(dia.id, data, minutos, erro);
+  if (estado.sessoes.some(s => s.data === data && s.dia === dia.id) && !confirm(`Já há o ${dia.nome} registrado em ${dataBR(data)}. Registrar outro mesmo assim?`)) return;
+  const total = dia.itens.reduce((t, i) => t + (parseInt(i.series, 10) || 1), 0);
+  const exs = dia.itens.filter(i => marcados.has(i.ex) && exDe(i.ex)).map(i => { const n = parseInt(i.series, 10) || 1; return { id: i.ex, carga: num(i.carga), series: n, feitas: n, reps: String(i.reps || ''), descanso: parseInt(i.descanso, 10) || 0 }; });
+  const nova = { data, dia: dia.id, titulo: dia.titulo || '', feitas: exs.reduce((t, x) => t + x.feitas, 0), total, minutos: min, exs, registrado: true };
+  // o histórico fica em ordem de data: um treino de ontem entra antes dos de hoje
+  let pos = estado.sessoes.length; while (pos > 0 && estado.sessoes[pos - 1].data > data) pos--;
+  estado.sessoes.splice(pos, 0, nova);
+  const gasto = gastoDoTreino(nova);
+  ui.registro = null; salvar(); fecharModal(); render();
+  toast(`${dia.nome} registrado em ${data === hoje ? 'hoje' : dataBR(data)}: cerca de ${n0(gasto.bruto)} kcal gastas.`);
 }
 
 /* ───────── Alimentação ───────── */
@@ -1199,10 +1256,12 @@ function viewEvolucao() {
 
     ${secaoCargas()}
 
-    <div class="secao"><h2>Treinos concluídos</h2>
-      <div class="card rolagem-x">${estado.sessoes.length ? `<table class="tabela"><tr><th>Data</th><th>Treino</th><th>Séries feitas</th><th>Duração</th><th>Gasto</th></tr>
-        ${estado.sessoes.slice(-12).reverse().map(s => `<tr><td>${dataBR(s.data)}</td><td>${esc('Treino ' + s.dia + (s.titulo ? ' · ' + s.titulo : ''))}</td><td>${s.feitas} de ${s.total}</td><td>${s.minutos ? s.minutos + ' min' : '–'}</td><td>${n0(gastoDoTreino(s).bruto)} kcal</td></tr>`).join('')}</table>`
-        : '<p class="suave">Quando você concluir um treino em Minha ficha, ele aparece aqui.</p>'}</div>
+    <div class="secao"><div class="cabecalho" style="margin-bottom:12px"><h2 style="margin:0">Treinos concluídos</h2>
+        ${estado.ficha && estado.ficha.dias.some(d => d.itens.length) ? `<button class="btn" data-acao="registrar-treino">${ic('mais', 'p')}Registrar treino já feito</button>` : ''}</div>
+      <div class="card rolagem-x">${estado.sessoes.length ? `<table class="tabela"><tr><th>Data</th><th>Treino</th><th>Séries feitas</th><th>Duração</th><th>Gasto</th><th><span class="sr">Apagar</span></th></tr>
+        ${estado.sessoes.map((s, i) => [s, i]).slice(-12).reverse().map(([s, i]) => `<tr><td>${dataBR(s.data)}${s.registrado ? '<br><span class="mini suave">registrado depois</span>' : ''}</td><td>${esc('Treino ' + s.dia + (s.titulo ? ' · ' + s.titulo : ''))}</td><td>${s.feitas} de ${s.total}</td><td>${s.minutos ? s.minutos + ' min' : '–'}</td><td>${n0(gastoDoTreino(s).bruto)} kcal</td>
+          <td><button class="btn icone apagar" data-acao="apagar-sessao" data-valor="${i}" title="Apagar do histórico" aria-label="Apagar o Treino ${esc(s.dia)} de ${dataBR(s.data)}">${ic('lixo', 'p')}</button></td></tr>`).join('')}</table>`
+        : '<p class="suave">Quando você concluir um treino em Minha ficha, ele aparece aqui. Treinou sem o app aberto? Use "Registrar treino já feito".</p>'}</div>
     </div>`;
 }
 
@@ -1349,6 +1408,16 @@ const ACOES = {
       toast(faltam ? `Exercício concluído. ${faltam === 1 ? 'Falta 1' : 'Faltam ' + faltam}.` : 'Todos os exercícios feitos. Toque em Concluir treino.');
     }
   },
+  'registrar-treino'(el) { modalRegistrarTreino(el.dataset.valor || (diaAtual() || {}).id); },
+  'rg-quando'(el) {
+    $('#rg-data').value = el.dataset.valor;
+    document.querySelectorAll('.rg-quando .flag').forEach(b => b.classList.toggle('ativo', b === el));
+  },
+  'apagar-sessao'(el) {
+    const i = parseInt(el.dataset.valor, 10), s = estado.sessoes[i]; if (!s) return;
+    if (!confirm(`Apagar o Treino ${s.dia} de ${dataBR(s.data)} do histórico?\n\nEle sai também da constância e do gasto de calorias.`)) return;
+    estado.sessoes.splice(i, 1); salvar(); render(); toast('Treino apagado do histórico.');
+  },
   'cancelar-treino'() { if (!confirm('Cancelar o treino em andamento? As séries marcadas serão descartadas.')) return; estado.sessao = null; pararDescanso(); salvar(); render(); },
   'concluir-treino'() {
     const s = estado.sessao, dia = estado.ficha.dias.find(d => d.id === s.dia); if (!dia) { estado.sessao = null; salvar(); return render(); }
@@ -1489,12 +1558,15 @@ document.addEventListener('submit', ev => {
   if (ev.target.id === 'form-convite') { ev.preventDefault(); if (podeGerenciar() && !ui.convite.ocupado) enviarConvite(); }
   if (ev.target.id === 'form-trocar-senha') { ev.preventDefault(); if (!ui.modalConta.ocupado) trocarSenha(); }
   if (ev.target.id === 'form-excluir-conta') { ev.preventDefault(); if (!ui.modalConta.ocupado) excluirConta(); }
+  if (ev.target.id === 'form-registro') { ev.preventDefault(); salvarRegistroTreino(); }
 });
 document.addEventListener('change', ev => {
   const t = ev.target;
   if (t.id === 'filtro-equip') { ui.filtro.equip = t.value; atualizarGrade(); }
   else if (t.id === 'aceite' && ui.rascunho) { ui.rascunho.aceite = t.checked; if (t.checked) delete ui.erros.consentimento; }
   else if (t.id === 'cv-prof' && ui.convite) ui.convite.profissional = t.checked;
+  else if (t.id === 'rg-dia') { const v = valoresRegistro(); modalRegistrarTreino(t.value, v.data, ''); }   // outro treino: nova estimativa de duração
+  else if (t.id === 'rg-data') document.querySelectorAll('.rg-quando .flag').forEach(b => b.classList.toggle('ativo', b.dataset.valor === t.value));
   else if (t.id === 'd-data' || t.id === 'd-refeicao' || t.id === 'd-un') { campoDiario(t); rascunhoDiario().erro = ''; render(); }
   else if (t.dataset.item != null) {
     const it = diaAtual().itens[parseInt(t.dataset.item, 10)], prop = t.dataset.prop;

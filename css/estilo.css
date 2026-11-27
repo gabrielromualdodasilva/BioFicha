@@ -532,6 +532,15 @@ table.tabela { width: 100%; border-collapse: collapse; font-size: 14px; }
 .cronometro .tempo { font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums; min-width: 64px; }
 .cronometro button { border: 0; border-radius: 10px; background: rgba(128, 128, 128, .28); color: inherit; min-height: 36px; padding: 4px 12px; font-weight: 700; }
 .aviso { padding: 13px 15px; border-radius: var(--raio-p); background: var(--sup2); font-size: 13.5px; color: var(--suave); }
+.so-celular { display: none; }
+@media (max-width: 860px) { .so-celular { display: inline; } }
+.rg-quando .flag { padding: 5px 14px; }
+.rg-lista { display: grid; gap: 6px; }
+.rg-ex { display: flex; align-items: flex-start; gap: 10px; padding: 9px 12px; border: 1px solid var(--linha); border-radius: var(--raio-p); background: var(--sup); cursor: pointer; font-size: 14px; }
+.rg-ex input { width: 18px; height: 18px; margin: 2px 0 0; accent-color: var(--marca); flex: none; }
+.rg-ex:has(input:not(:checked)) { opacity: .55; }
+.tabela .apagar { min-height: 30px; width: 30px; padding: 0; }
+.sr { position: absolute; width: 1px; height: 1px; overflow: hidden; clip: rect(0 0 0 0); white-space: nowrap; }
 .faixa-demo { display: flex; align-items: center; gap: 12px; margin-bottom: 22px; padding: 12px 14px; border-radius: var(--raio-p); background: var(--acento-f); border: 1px solid color-mix(in srgb, var(--acento) 35%, transparent); font-size: 14px; }
 .faixa-demo > .ic { color: var(--acento); flex: none; }
 .faixa-demo > div { flex: 1; min-width: 0; }
@@ -579,6 +588,11 @@ table.tabela { width: 100%; border-collapse: collapse; font-size: 14px; }
   .subabas { display: flex; }
   .so-computador { display: none; }
   .energia-lista { display: block; }
+  /* Ficha no celular: Iniciar treino em cima, largo; Registrar e Excluir lado a lado embaixo */
+  .acoes-dia { display: grid; grid-template-columns: 1fr auto; width: 100%; gap: 8px; }
+  .acoes-dia > .primario { grid-column: 1 / -1; order: -1; justify-content: center; }
+  .acoes-dia > [data-acao="registrar-treino"] { order: 0; justify-content: center; }
+  .acoes-dia > .perigo { order: 1; }
   .subaba { flex: 1 1 0; justify-content: center; padding: 9px 8px; }
   .nav-item > span { text-transform: capitalize; }
   .item { align-items: start; gap: 8px 12px; }

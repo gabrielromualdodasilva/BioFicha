@@ -388,6 +388,38 @@ const espera = ms => new Promise(r => setTimeout(r, ms));
   ok(!(await js('!!document.querySelector(".erro-app")')) && (await texto('h1')).length > 0, 'página abre normalmente com os dados convertidos');
   ok(!(await js('!!document.querySelector(".faixa-demo")')), 'fora do exemplo, sem a faixa de dados inventados');
 
+  // Registrar treino já feito (treinou sem o app aberto): entra na data certa, na constância e no gasto
+  await js(`localStorage.setItem('fichaAcademia.v1', JSON.stringify(Object.assign(dadosDemo(), { sessoes: [{ data: hojeISO(), dia: 'B', titulo: '', feitas: 10, total: 10, minutos: 40 }], diario: [] })))`);
+  await cmd('Page.reload'); await espera(1200);
+  await js(`location.hash = '#/ficha', true`); await espera(300);
+  await clicar('[data-acao="registrar-treino"]'); await espera(250);
+  ok(/Registrar treino já feito/.test(await texto('#modal')) && (await js('document.querySelectorAll("input[name=rg-ex]:checked").length')) === (await js('diaAtual().itens.length')), 'registrar: janela abre com todos os exercícios do treino marcados');
+  const ontem = await js(`dataMenosDias(1)`);
+  await clicar(`[data-acao="rg-quando"][data-valor="${ontem}"]`);
+  ok((await js(`document.querySelector('#rg-data').value`)) === ontem && (await js(`document.querySelector('.rg-quando .flag.ativo').innerText`)) === 'Ontem', 'registrar: "Ontem" preenche a data de ontem');
+  await js(`document.querySelector('#rg-min').value = '400', true`); await clicar('#form-registro [type=submit]'); await espera(250);
+  ok(/entre 5 e 240 minutos/.test(await texto('#modal')) && (await js('estado.sessoes.length')) === 1 && (await js(`document.querySelector('#rg-data').value`)) === ontem, 'registrar: duração fora da faixa mostra o erro e mantém a data');
+  await js(`(() => { document.querySelector('#rg-min').value = '50'; const cs = document.querySelectorAll('input[name=rg-ex]'); cs[cs.length - 1].checked = false; return true; })()`);
+  await clicar('#form-registro [type=submit]'); await espera(300);
+  ok(await js(`(() => { const s = estado.sessoes; return s.length === 2 && s[0].data === dataMenosDias(1) && s[0].registrado && s[0].minutos === 50 && s[0].exs.length === diaAtual().itens.length - 1 && s[1].data === hojeISO(); })()`), 'registrar: treino de ontem entra antes do de hoje, com 50 min e sem o exercício desmarcado');
+  ok((await js('document.querySelector("#modal").hidden')) && /registrado em .*kcal gastas/.test(await texto('#toast')), 'registrar: janela fecha e o aviso mostra o gasto');
+  await js(`location.hash = '#/painel', true`); await espera(300);
+  ok((await js('frequenciaDeTreino().dias28')) === 2 && (await js(`document.querySelectorAll('.calendario .cel.fez').length`)) === 2, 'registrar: ontem e hoje marcados no calendário de constância');
+  await js(`location.hash = '#/evolucao', true`); await espera(300);
+  ok(/registrado depois/.test(await texto('#conteudo')) && (await js('document.querySelectorAll("[data-acao=apagar-sessao]").length')) === 2, 'histórico: treino registrado aparece marcado, com botão de apagar');
+  await js(`[...document.querySelectorAll('[data-acao=apagar-sessao]')].find(b => estado.sessoes[b.dataset.valor].registrado).click(), true`); await espera(300);
+  ok((await js('estado.sessoes.length')) === 1 && (await js('estado.sessoes[0].data === hojeISO() && !estado.sessoes[0].registrado')) && (await js(`JSON.parse(localStorage.getItem('fichaAcademia.v1')).sessoes.length`)) === 1, 'histórico: apagar tira só aquele treino e salva');
+  await js(`location.hash = '#/ficha', true`); await espera(300);
+  await clicar('[data-acao="registrar-treino"]'); await espera(250);
+  await js(`(() => { const d = new Date(); d.setDate(d.getDate() + 2); document.querySelector('#rg-data').value = d.toISOString().slice(0, 10); return true; })()`);
+  await clicar('#form-registro [type=submit]'); await espera(250);
+  ok(/não pode ser depois de hoje/.test(await texto('#modal')), 'registrar: data futura é recusada');
+  await cmd('Emulation.setDeviceMetricsOverride', { width: 390, height: 780, deviceScaleFactor: 2, mobile: true }); await espera(300);
+  await foto('cel-registrar-treino');
+  ok(await js('document.documentElement.scrollWidth <= window.innerWidth'), 'celular: janela de registrar sem rolagem lateral');
+  await js(`document.querySelector('[data-acao=fechar-modal][data-forcar]').click(), true`);
+  await cmd('Emulation.setDeviceMetricsOverride', { width: 1320, height: 900, deviceScaleFactor: 1, mobile: false });
+
   // Exemplo (?demo): faixa avisando que os dados são inventados, em todas as telas, com link para a conta
   await cmd('Page.navigate', { url: url + '?demo' }); await espera(1200);
   const telasComFaixa = [];
