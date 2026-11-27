@@ -4,7 +4,7 @@
    - Fotos dos exercícios: usa a cópia guardada e só busca na internet o que ainda não tem.
    - Fontes e o SDK do Firebase (gstatic): usa a cópia e atualiza por trás.
    - Chamadas ao banco e ao login do Firebase não passam por aqui; o próprio Firebase cuida do modo sem internet. */
-const VERSAO = 'bioficha-v2';
+const VERSAO = 'bioficha-v3';
 const BASE = [
   './', 'index.html', 'manifest.webmanifest', 'css/estilo.css',
   'js/exercicios.js', 'js/musculos.js', 'js/calculos.js', 'js/treino.js', 'js/firebase-config.js', 'js/acompanhamento.js', 'js/conta.js', 'js/app.js',

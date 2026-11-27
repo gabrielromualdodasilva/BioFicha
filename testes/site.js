@@ -15,7 +15,8 @@ const espera = ms => new Promise(r => setTimeout(r, ms));
     const m = JSON.parse(ev.data);
     if (m.id && pend[m.id]) { pend[m.id](m); delete pend[m.id]; }
     if (m.method === 'Runtime.exceptionThrown') erros.push(m.params.exceptionDetails.exception ? m.params.exceptionDetails.exception.description : m.params.exceptionDetails.text);
-    if (m.method === 'Log.entryAdded' && m.params.entry.level === 'error') erros.push('LOG: ' + m.params.entry.text + ' ' + (m.params.entry.url || ''));
+    // aberto como arquivo, o navegador sempre bloqueia o manifest.webmanifest (só carrega em http/https): não é erro do site
+    if (m.method === 'Log.entryAdded' && m.params.entry.level === 'error' && !/manifest\.webmanifest/.test(m.params.entry.text + ' ' + (m.params.entry.url || ''))) erros.push('LOG: ' + m.params.entry.text + ' ' + (m.params.entry.url || ''));
     if (m.method === 'Page.javascriptDialogOpening') cmd('Page.handleJavaScriptDialog', { accept: true });
   };
   const cmd = (method, params) => new Promise(r => { const id = ++seq; pend[id] = r; ws.send(JSON.stringify({ id, method, params: params || {} })); });
@@ -385,6 +386,17 @@ const espera = ms => new Promise(r => setTimeout(r, ms));
   ok((await js('JSON.stringify([estado.modelo, estado.perfil.bio])')) === JSON.stringify([2, { gordura: 24, musculo: 40, visceral: 9, tmb: '' }]), 'dados antigos: músculo em kg vira % do peso (36 kg de 90 kg = 40%) e os campos retirados somem');
   ok((await js('JSON.stringify(estado.medidas.map(m => [m.musculo, "agua" in m]))')) === JSON.stringify([[null, false], [40, false]]), 'dados antigos: massa muscular total (62 kg de 92 kg) não vira músculo esquelético');
   ok(!(await js('!!document.querySelector(".erro-app")')) && (await texto('h1')).length > 0, 'página abre normalmente com os dados convertidos');
+  ok(!(await js('!!document.querySelector(".faixa-demo")')), 'fora do exemplo, sem a faixa de dados inventados');
+
+  // Exemplo (?demo): faixa avisando que os dados são inventados, em todas as telas, com link para a conta
+  await cmd('Page.navigate', { url: url + '?demo' }); await espera(1200);
+  const telasComFaixa = [];
+  for (const r of ['painel', 'ficha', 'exercicios', 'alimentacao', 'evolucao', 'perfil']) {
+    await js(`location.hash = '#/${r}', true`); await espera(250);
+    if (await js('!!document.querySelector("#conteudo > .faixa-demo")')) telasComFaixa.push(r);
+  }
+  ok(telasComFaixa.length === 6, 'exemplo: faixa "dados inventados" em todas as telas (' + telasComFaixa.join(', ') + ')');
+  ok((await js('document.querySelector(".faixa-demo a").getAttribute("href")')) === (await js('location.pathname')), 'exemplo: "Abrir minha conta" leva ao endereço sem ?demo');
   console.log(erros.length ? 'ERROS DE CONSOLE:\n' + erros.join('\n') : 'Sem erros de console.');
   await cmd('Browser.close');
   process.exit(0);

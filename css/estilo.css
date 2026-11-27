@@ -532,6 +532,15 @@ table.tabela { width: 100%; border-collapse: collapse; font-size: 14px; }
 .cronometro .tempo { font-size: 26px; font-weight: 800; font-variant-numeric: tabular-nums; min-width: 64px; }
 .cronometro button { border: 0; border-radius: 10px; background: rgba(128, 128, 128, .28); color: inherit; min-height: 36px; padding: 4px 12px; font-weight: 700; }
 .aviso { padding: 13px 15px; border-radius: var(--raio-p); background: var(--sup2); font-size: 13.5px; color: var(--suave); }
+.faixa-demo { display: flex; align-items: center; gap: 12px; margin-bottom: 22px; padding: 12px 14px; border-radius: var(--raio-p); background: var(--acento-f); border: 1px solid color-mix(in srgb, var(--acento) 35%, transparent); font-size: 14px; }
+.faixa-demo > .ic { color: var(--acento); flex: none; }
+.faixa-demo > div { flex: 1; min-width: 0; }
+.faixa-demo .btn { flex: none; }
+@media (max-width: 560px) {
+  .faixa-demo { flex-wrap: wrap; align-items: flex-start; row-gap: 10px; }
+  .faixa-demo > div { flex: 1 1 calc(100% - 40px); }
+  .faixa-demo .btn { margin-left: 32px; }
+}
 .erro-app { margin: 16px; padding: 14px; border-radius: 12px; background: var(--alerta-f); color: var(--alerta); font-weight: 600; }
 
 /* ───────── Telas médias e pequenas ───────── */

@@ -192,8 +192,12 @@ function render() {
       ${ROTAS.map(([r, nome]) => `<a class="nav-item ${r === rota || (r === 'perfil' && rota === 'pessoas') || (r === 'ficha' && rota === 'exercicios') ? 'ativo' : ''}" href="#/${r}">${ic(r)}<span>${r === 'ficha' ? '<span class="so-largo">Minha </span>ficha' : nome}</span></a>`).join('')}
       <div class="rodape mini suave" id="situacao">${DEMO ? 'Modo demonstração: dados de exemplo.' : NUVEM ? textoSituacao() : 'Seus dados ficam salvos só neste navegador.'}</div>
     </nav>
-    <main class="conteudo" id="conteudo">${VIEWS[rota]()}</main>`;
+    <main class="conteudo" id="conteudo">${DEMO ? faixaDemo() : ''}${VIEWS[rota]()}</main>`;
 }
+// No exemplo (?demo), deixa claro em toda tela que os dados são inventados, para ninguém confundir com a própria conta
+const faixaDemo = () => `<div class="faixa-demo" role="note">${ic('info')}
+    <div><b>Exemplo com dados inventados.</b> Estes treinos, refeições e medidas são de um visitante fictício, não seus.</div>
+    <a class="btn" href="${esc(location.pathname)}">Abrir minha conta</a></div>`;
 window.addEventListener('hashchange', () => { if (rotaAtual() === 'pessoas') { ui.convites = undefined; ui.usuarios = undefined; } render(); window.scrollTo(0, 0); });
 
 /* ───────── Nuvem: conta e dados no Firebase (Auth + Firestore) ─────────
