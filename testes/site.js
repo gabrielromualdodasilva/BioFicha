@@ -167,6 +167,7 @@ const espera = ms => new Promise(r => setTimeout(r, ms));
   ok((await js('document.querySelectorAll(".item.feito").length')) === nEx && (await js('!!document.querySelector(".btn.primario.pronto")')), 'com todos concluídos, "Concluir treino" fica em destaque');
   await foto('t7-treino-por-exercicio');
   await clicar('[data-acao="concluir-treino"]'); await espera(400);
+  ok(/Treino concluído: cerca de [0-9.]+ kcal gastas/.test(await texto('#toast')), 'ao concluir, o aviso mostra as calorias gastas no treino');
   ok((await js('estado.sessoes.length')) === 2 && (await js('estado.sessoes[1].feitas === estado.sessoes[1].total')), 'treino concluído por exercício vai para o histórico com todas as séries');
   ok((await js('document.querySelectorAll(".aba.feita").length')) === 2 && /Feito esta semana/.test(await texto('.abas')), 'abas marcam os treinos já feitos na semana');
   await foto('t7b-ficha');
@@ -194,6 +195,25 @@ const espera = ms => new Promise(r => setTimeout(r, ms));
   await js(`location.hash = '#/evolucao', true`); await espera(300);
   ok(/Progresso de cargas/.test(await texto('#conteudo')) && (await js('document.querySelectorAll(".tabela.cargas tr").length')) >= 2 && /40 kg/.test(await texto('.tabela.cargas')), 'evolução tem a tabela de progresso de cargas');
   await js(`(() => { estado.sessoes.pop(); estado.sessoes.pop(); salvar(); render(); return true; })()`);
+
+  // Gasto dos treinos e balanço de energia
+  ok(await js(`JSON.stringify(['Walking_Treadmill', 'Bicycling_Stationary', 'Jogging_Treadmill', 'Barbell_Squat', 'Plank'].map(id => metDoExercicio(EX_POR_ID[id])))`) === '[4.8,6.8,7.5,3.5,2.8]', 'intensidades do Compendium 2024: caminhada 4,8, bicicleta 6,8, corrida leve 7,5, musculação 3,5, prancha 2,8');
+  ok(await js(`(() => { const peso = pesoNaData(hojeISO(), estado), g = gastoDoTreino({ data: hojeISO(), minutos: 25, exs: [{ id: 'Walking_Treadmill', series: 1, feitas: 1, reps: '25 min', descanso: 0 }] });
+    return g.bruto === Math.round(4.8 * 3.5 * peso * 25 / 200) && g.extra === Math.round(4.8 * 3.5 * peso * 25 / 200 - fatorRotina(estado) * tmbNaData(hojeISO(), estado) / 1440 * 25); })()`), 'caminhada de 25 min: gasto = MET × 3,5 × peso × minutos ÷ 200, e o balanço soma só o que passa do gasto normal');
+  ok(await js(`(() => { const s = { data: hojeISO(), exs: [{ id: 'Barbell_Squat', series: 4, feitas: 4, reps: '8–10', descanso: 90 }] };
+    const est = gastoDoTreino(s).minutos, esq = gastoDoTreino(Object.assign({ minutos: 400 }, s)).minutos, rap = gastoDoTreino(Object.assign({ minutos: 1 }, s)).minutos;
+    return est > 5 && esq <= est * 2 + 1 && rap >= Math.floor(est * 0.7); })()`), 'treino esquecido aberto não vira horas de gasto, e treino marcado todo no fim não fica sem gasto');
+  ok(await js(`(() => { const g = estado.medidas; estado.medidas = [{ data: '2026-01-01', peso: 100 }].concat(g); const p = gastoDoTreino({ data: '2026-01-05', minutos: 30 }).peso; estado.medidas = g; return p === 100; })()`), 'cada treino usa o peso medido na data dele');
+  ok(await js(`(() => { const d = energiaDoDia(hojeISO()); return d.repouso === Math.round(tmbNaData(hojeISO(), estado) * fatorRotina(estado)) && d.gasto === d.repouso + d.treinoExtra && d.saldo === d.comeu - d.gasto && d.valido === false; })()`), 'dia: gasto = repouso × fator da rotina + treino; saldo = comeu − gasto; hoje não entra na média');
+  ok(await js(`(() => { const g = estado.diario, h = hojeISO(); estado.diario = [{ id: 'z1', data: dataMenos(h, 1), refeicao: 'Almoço', itens: [], kcal: 2000, p: 140, c: 200, g: 70 }, { id: 'z2', data: dataMenos(h, 2), refeicao: 'Almoço', itens: [], kcal: 300, p: 20, c: 30, g: 10 }];
+    const b = balancoEnergia(estado, 7), d1 = energiaDoDia(dataMenos(h, 1)); estado.diario = g;
+    return b.validos === 1 && b.comeuMedio === 2000 && b.saldoMedio === d1.saldo && Math.abs(b.ritmoKg - d1.saldo * 7 / 7700) < 1e-9 && b.dias[1].incompleto; })()`), 'média só com dias completos (dia com 300 kcal fica de fora) e ritmo = saldo × 7 ÷ 7.700');
+  await js(`location.hash = '#/painel', true`); await espera(300);
+  ok(/Balanço de energia/.test(await texto('#conteudo')) && (await js('document.querySelectorAll(".tabela.energia tr").length')) === 9 && /Gasto por treino/.test(await texto('#conteudo')), 'painel mostra o balanço de energia com 8 dias (hoje e os 7 anteriores)');
+  ok(/Como é calculado/.test(await texto('#conteudo')) && /Compendium of Physical Activities 2024/.test(await js('document.querySelector(".como-calculado").textContent')), 'painel explica como o gasto é calculado e cita a fonte');
+  await js(`document.querySelector('.tabela.energia').scrollIntoView(), true`); await foto('t8c-energia');
+  await js(`location.hash = '#/evolucao', true`); await espera(300);
+  ok((await js(`[...document.querySelectorAll('.tabela th')].some(th => th.innerText === 'Gasto')`)) && /[0-9] kcal/.test(await js(`[...document.querySelectorAll('.tabela tr')].find(r => /Treino/.test(r.innerText) && /kcal/.test(r.innerText))?.innerText || ''`)), 'histórico de treinos mostra o gasto de cada treino');
 
   // Exercícios: aba dentro de Minha ficha e atalho no Perfil
   ok((await js(`[...document.querySelectorAll('.lateral .nav-item')].map(a => a.innerText.trim().replace(/\\s+/g, ' ')).join(' | ')`)) === 'Painel | Minha ficha | Alimentação | Evolução | Perfil', 'menu principal tem 5 itens, sem Exercícios');

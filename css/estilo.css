@@ -319,6 +319,25 @@ textarea.entrada { resize: vertical; line-height: 1.5; min-height: 108px; }
 .legenda .cel { display: inline-block; width: 12px; height: 12px; border-radius: 4px; margin-right: 6px; vertical-align: -1px; }
 .legenda .cel.hoje { box-shadow: 0 0 0 1.5px var(--sup), 0 0 0 3px var(--texto); }
 
+/* Balanço de energia */
+.tabela.energia td { vertical-align: middle; }
+.tabela.energia tr.fraco td { color: var(--suave); }
+.saldo-barra { display: inline-flex; align-items: center; gap: 8px; width: 210px; max-width: 100%; }
+.saldo-barra i { display: block; height: 10px; border-radius: 0 4px 4px 0; background: var(--dado-magra); flex: none; max-width: 110px; }
+.saldo-barra.sobra i { background: var(--dado-gordura); }
+.saldo-barra span { font-weight: 650; font-size: 13px; white-space: nowrap; }
+.gasto-dia { margin-top: 8px; font-size: 13.5px; }
+.energia-lista { display: none; }
+.energia-dia { display: grid; gap: 4px; padding: 11px 0; border-bottom: 1px solid var(--linha); }
+.energia-dia:last-child { border-bottom: 0; }
+.energia-dia .topo { display: flex; align-items: center; justify-content: space-between; gap: 10px; }
+.energia-dia .topo > :last-child { text-align: right; }
+.energia-dia .saldo-barra { width: auto; justify-content: flex-end; }
+.energia-dia.fraco { opacity: .7; }
+.como-calculado { margin-top: 12px; }
+.como-calculado .lista { margin-top: 10px; font-size: 13.5px; color: var(--suave); }
+.como-calculado .lista b { color: var(--texto); }
+
 /* Barra de composição corporal */
 .composicao { display: flex; gap: 2px; height: 30px; }
 .composicao div { border-radius: 6px; display: flex; align-items: center; padding: 0 10px; font-size: 13px; font-weight: 750; min-width: 0; }
@@ -549,6 +568,8 @@ table.tabela { width: 100%; border-collapse: collapse; font-size: 14px; }
   .cabecalho { align-items: flex-start; }
   .so-largo { display: none; }
   .subabas { display: flex; }
+  .so-computador { display: none; }
+  .energia-lista { display: block; }
   .subaba { flex: 1 1 0; justify-content: center; padding: 9px 8px; }
   .nav-item > span { text-transform: capitalize; }
   .item { align-items: start; gap: 8px 12px; }

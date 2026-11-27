@@ -120,7 +120,7 @@ function dadosDemo() {
     { data: '2026-11-24', peso: 88.4, gordura: 25.6, visceral: 10, musculo: 35.8, tmb: 1845 }
   ];
   const a = analisar(perfil);
-  return { modelo: 2, diario: [], planoDesde: '2026-10-25', perfil, ficha: gerarFicha(perfil, a.objetivo), medidas, sessoes: sessoesDemo(), sessao: null };
+  return { modelo: 2, diario: diarioDemo(), planoDesde: '2026-10-25', perfil, ficha: gerarFicha(perfil, a.objetivo), medidas, sessoes: sessoesDemo(), sessao: null };
 }
 
 // Treinos de exemplo: dez semanas, de 2 a 4 dias por semana, sempre nos mesmos dias para o exemplo não mudar a cada visita
@@ -137,6 +137,24 @@ function sessoesDemo() {
     lista.push({ data: iso(d), dia: t[0], titulo: t[1], feitas: total - (lista.length % 5 === 0 ? 2 : 0), total, minutos: 46 + (lista.length * 7) % 19 });
   }));
   return lista;
+}
+
+// Diário de exemplo: dez dias com as mesmas refeições variando um pouco, para o balanço de energia aparecer preenchido
+function diarioDemo() {
+  const d0 = new Date(); d0.setHours(12, 0, 0, 0);
+  const iso = d => new Date(d - d.getTimezoneOffset() * 60000).toISOString().slice(0, 10);
+  const refeicoes = [['Café da manhã', 420, 28, 45, 14], ['Almoço', 720, 48, 80, 20], ['Lanche', 260, 20, 26, 8], ['Jantar', 610, 42, 60, 19]];
+  const lista = [];
+  for (let i = 0; i < 10; i++) {
+    const d = new Date(d0); d.setDate(d.getDate() - i);
+    const extra = [0, 180, -90, 320, 60, -150, 0, 240, -60, 120][i];
+    refeicoes.forEach(([refeicao, kcal, p, c, g], k) => {
+      if (i === 0 && k > 1) return;                                    // hoje: só café e almoço até agora
+      const k2 = kcal + (k === 1 ? extra : 0);
+      lista.push({ id: 'demo' + i + k, data: iso(d), refeicao, fonte: 'manual', itens: [{ nome: refeicao, qtd: '', kcal: k2, p, c, g }], kcal: k2, p, c, g });
+    });
+  }
+  return lista.sort((a, b) => a.data.localeCompare(b.data));
 }
 
 /* ───────── Roteamento e moldura ───────── */
@@ -537,13 +555,14 @@ function modalUsuario(uid) {
       ${a.musculo !== null ? tile('Músculo esquelético', n1(a.musculo), '%', selo(a.musculoClasse.nivel, a.musculoClasse.rotulo)) : ''}
       ${tile('IMC', n1(a.imc), '', selo(a.imcClasse.nivel, a.imcClasse.rotulo))}
       ${tile('Treinos', r.treinos7 + ' de ' + (r.meta || '–'), '', `<span class="mini suave">na semana · ${r.treinos28} em 28 dias</span>`)}
+      ${(bu => tile('Gasto por treino', bu.porTreino === null ? '–' : n0(bu.porTreino), bu.porTreino === null ? '' : 'kcal', `<span class="mini suave">${bu.saldoMedio === null ? 'média em 28 dias' : 'saldo diário ' + comSinalKcal(bu.saldoMedio) + ' kcal'}</span>`))(balancoEnergia(u, 7))}
     </div>
     <h3 style="margin-top:20px">Medições</h3>
     <div class="rolagem-x"><table class="tabela"><tr><th>Data</th><th>Peso (kg)</th><th>Gordura (%)</th><th>Abdominal</th><th>Músculo (%)</th><th>Repouso (kcal)</th></tr>
       ${(u.medidas || []).slice(-8).reverse().map(m => `<tr><td>${dataBR(m.data)}</td><td>${v(m.peso)}</td><td>${v(m.gordura)}</td><td>${m.visceral == null ? '–' : n0(m.visceral)}</td><td>${v(m.musculo)}</td><td>${m.tmb == null ? '–' : n0(m.tmb)}</td></tr>`).join('') || '<tr><td colspan="6" class="suave">Sem medições.</td></tr>'}</table></div>
     <h3 style="margin-top:20px">Treinos concluídos</h3>
-    <div class="rolagem-x"><table class="tabela"><tr><th>Data</th><th>Treino</th><th>Séries</th><th>Duração</th></tr>
-      ${(u.sessoes || []).slice(-8).reverse().map(s => `<tr><td>${dataBR(s.data)}</td><td>${esc('Treino ' + s.dia + (s.titulo ? ' · ' + s.titulo : ''))}</td><td>${s.feitas} de ${s.total}</td><td>${s.minutos ? s.minutos + ' min' : '–'}</td></tr>`).join('') || '<tr><td colspan="4" class="suave">Nenhum treino concluído.</td></tr>'}</table></div>
+    <div class="rolagem-x"><table class="tabela"><tr><th>Data</th><th>Treino</th><th>Séries</th><th>Duração</th><th>Gasto</th></tr>
+      ${(u.sessoes || []).slice(-8).reverse().map(s => `<tr><td>${dataBR(s.data)}</td><td>${esc('Treino ' + s.dia + (s.titulo ? ' · ' + s.titulo : ''))}</td><td>${s.feitas} de ${s.total}</td><td>${s.minutos ? s.minutos + ' min' : '–'}</td><td>${n0(gastoDoTreino(s, u).bruto)} kcal</td></tr>`).join('') || '<tr><td colspan="5" class="suave">Nenhum treino concluído.</td></tr>'}</table></div>
     <h3 style="margin-top:20px">Alimentação</h3>
     <p>Meta de ${n0(pl.kcal)} kcal e ${n0(pl.proteina)} g de proteína${pl.ajustado ? ', reestruturada em ' + dataBR(p.planoAjuste.desde) : ''}. ${diario ? `Nos últimos 7 dias registrou ${diario.dias} ${diario.dias === 1 ? 'dia' : 'dias'}, com média de ${n0(diario.kcal)} kcal.` : 'Sem registros no diário nos últimos 7 dias.'}</p>
     <h3 style="margin-top:20px">Análise da semana</h3><p>${esc(semana.resumo)}</p><div class="meta-semana"><span class="mini">Meta da semana</span><b>${esc(semana.meta)}</b></div></div>`);
@@ -892,6 +911,8 @@ function viewPainel() {
 
     ${secaoFrequencia()}
 
+    ${secaoEnergia()}
+
     <div class="secao duas">
       <div class="card"><h2>Composição corporal</h2>
         <div class="composicao" role="img" aria-label="Massa magra ${n1(pctMagra)}%, gordura ${n1(a.gordura)}%">
@@ -1175,8 +1196,8 @@ function viewEvolucao() {
     ${secaoCargas()}
 
     <div class="secao"><h2>Treinos concluídos</h2>
-      <div class="card rolagem-x">${estado.sessoes.length ? `<table class="tabela"><tr><th>Data</th><th>Treino</th><th>Séries feitas</th><th>Duração</th></tr>
-        ${estado.sessoes.slice(-12).reverse().map(s => `<tr><td>${dataBR(s.data)}</td><td>${esc('Treino ' + s.dia + (s.titulo ? ' · ' + s.titulo : ''))}</td><td>${s.feitas} de ${s.total}</td><td>${s.minutos ? s.minutos + ' min' : '–'}</td></tr>`).join('')}</table>`
+      <div class="card rolagem-x">${estado.sessoes.length ? `<table class="tabela"><tr><th>Data</th><th>Treino</th><th>Séries feitas</th><th>Duração</th><th>Gasto</th></tr>
+        ${estado.sessoes.slice(-12).reverse().map(s => `<tr><td>${dataBR(s.data)}</td><td>${esc('Treino ' + s.dia + (s.titulo ? ' · ' + s.titulo : ''))}</td><td>${s.feitas} de ${s.total}</td><td>${s.minutos ? s.minutos + ' min' : '–'}</td><td>${n0(gastoDoTreino(s).bruto)} kcal</td></tr>`).join('')}</table>`
         : '<p class="suave">Quando você concluir um treino em Minha ficha, ele aparece aqui.</p>'}</div>
     </div>`;
 }
@@ -1330,9 +1351,10 @@ const ACOES = {
     const total = dia.itens.reduce((t, i) => t + (parseInt(i.series, 10) || 1), 0);
     const feitas = dia.itens.reduce((t, i) => t + Math.min(s.feitas[i.ex] || 0, parseInt(i.series, 10) || 1), 0);
     if (feitas < total && !confirm(`Você marcou ${feitas} de ${total} séries. Concluir mesmo assim?`)) return;
-    const exs = dia.itens.map(i => { const n = parseInt(i.series, 10) || 1; return { id: i.ex, carga: num(i.carga), series: n, feitas: Math.min(s.feitas[i.ex] || 0, n) }; }).filter(x => x.feitas > 0);
+    const exs = dia.itens.map(i => { const n = parseInt(i.series, 10) || 1; return { id: i.ex, carga: num(i.carga), series: n, feitas: Math.min(s.feitas[i.ex] || 0, n), reps: String(i.reps || ''), descanso: parseInt(i.descanso, 10) || 0 }; }).filter(x => x.feitas > 0);
     estado.sessoes.push({ data: hojeISO(), dia: dia.id, titulo: dia.titulo || '', feitas, total, minutos: Math.max(1, Math.round((Date.now() - s.inicio) / 60000)), exs });
-    estado.sessao = null; pararDescanso(); salvar(); render(); toast('Treino concluído e registrado. Bom trabalho!');
+    const gasto = gastoDoTreino(estado.sessoes[estado.sessoes.length - 1]);
+    estado.sessao = null; pararDescanso(); salvar(); render(); toast(`Treino concluído: cerca de ${n0(gasto.bruto)} kcal gastas. Bom trabalho!`);
   },
 
   // Biblioteca e janelas

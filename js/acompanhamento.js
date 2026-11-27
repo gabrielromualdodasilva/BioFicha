@@ -231,6 +231,15 @@ function analiseDaSemana(e) {
     if (d7.kcalFimDeSemana !== null && d7.kcalDiasUteis !== null && d7.kcalFimDeSemana > d7.kcalDiasUteis * 1.2) alim.push(`No fim de semana a média sobe para ${n0(d7.kcalFimDeSemana)} kcal, contra ${n0(d7.kcalDiasUteis)} nos dias úteis. Planejar uma refeição livre, em vez do dia inteiro, segura boa parte disso.`);
   } else alim.push(d7.dias ? `Só ${d7.dias} ${d7.dias === 1 ? 'dia registrado' : 'dias registrados'} no diário nesta semana. Com pelo menos 3 dias já dá para comparar com a meta.` : 'Registre o que você come em "O que eu comi", na Alimentação. Sem o diário não dá para saber se a meta de calorias e de proteína está sendo cumprida.');
 
+  // Balanço de energia da semana (dias completos do diário) e gasto dos treinos
+  const bal = balancoEnergia(e, 7);
+  if (bal.validos >= 3) {
+    const sm = bal.saldoMedio, kgSem = bal.ritmoKg, pctSem = Math.abs(kgSem) / a.peso * 100;
+    const tipo = emagrecer ? (sm < -100 && pctSem <= 1 ? 'bom' : sm >= 0 ? 'atencao' : pctSem > 1 ? 'atencao' : 'info') : ganhar ? (sm > 0 ? 'bom' : 'atencao') : (Math.abs(sm) <= 200 ? 'bom' : 'info');
+    ponto(tipo, `Nos ${bal.validos} dias com o diário completo você comeu em média ${n0(bal.comeuMedio)} kcal e gastou ${n0(bal.gastoMedio)}: saldo de ${comSinalKcal(sm)} kcal por dia, o que dá cerca de ${Math.abs(kgSem) < 0.05 ? 'peso estável' : br(arred(Math.abs(kgSem), 1)) + ' kg ' + (kgSem < 0 ? 'a menos' : 'a mais') + ' por semana'}.`);
+  }
+  if (bal.treinos7) ponto('info', `Os ${bal.treinos7} ${bal.treinos7 === 1 ? 'treino da semana gastou' : 'treinos da semana gastaram'} cerca de ${n0(bal.treinoSemana)} kcal${bal.porTreino ? `; a média por treino está em ${n0(bal.porTreino)} kcal` : ''}.`);
+
   // Uma meta só, a mais importante agora
   const metaSemana = !ult ? 'Lançar a primeira medição de peso e bioimpedância.'
     : feitos < meta ? `Concluir os ${meta} treinos da ficha nos próximos 7 dias.`
@@ -354,6 +363,7 @@ function secaoDiario(pl) {
       <div class="card"><h2>${d.data === hoje ? 'Hoje' : dataBR(d.data)}</h2>
         ${barraMeta('Calorias', t.kcal, pl.kcal, 'kcal')}${barraMeta('Proteína', t.p, pl.proteina, 'g')}
         <p class="suave pequeno" style="margin-top:10px">${!doDia.length ? 'Nada registrado neste dia.' : resto >= 0 ? `Faltam ${n0(resto)} kcal para a meta.` : `Passou ${n0(-resto)} kcal da meta.`} ${doDia.length ? `Carboidrato ${n0(t.c)} g · gordura ${n0(t.g)} g.` : ''}</p>
+        ${(en => `<p class="gasto-dia">Gasto ${en.hoje ? 'previsto para hoje' : 'do dia'}: <b>${n0(en.gasto)} kcal</b> <span class="suave">(${n0(en.repouso)} de repouso e rotina${en.treinos ? ` + ${n0(en.treinoExtra)} do treino` : ''})</span>${doDia.length ? ` · saldo <b>${comSinalKcal(en.saldo)}</b>` : ''}</p>`)(energiaDoDia(d.data))}
         ${!doDia.length && diaAnteriorComRegistro(d.data) ? `<div class="acoes" style="margin-top:12px"><button class="btn" data-acao="diario-repetir">Repetir ${diaAnteriorComRegistro(d.data) === dataMenos(d.data, 1) ? 'o dia anterior' : 'o dia ' + dataCurta(diaAnteriorComRegistro(d.data))}</button></div>` : ''}
         <div class="pilha entradas-diario">${doDia.map(registro).join('')}</div></div>
     </div>
@@ -637,6 +647,165 @@ const ACOES_DIARIO_EXTRA = {
     salvar(); render(); toast(`Copiei ${copias.length} ${copias.length === 1 ? 'refeição' : 'refeições'} de ${dataBR(origem)}. Ajuste o que mudou.`);
   }
 };
+
+/* ───────── Gasto de energia: treinos e balanço do dia ─────────
+   Intensidades (MET) do Compendium of Physical Activities, edição de 2024 (pacompendium.com), conferidas em 27/11/2026.
+   1 MET = 3,5 mL de oxigênio por kg por minuto, e 1 litro de oxigênio ≈ 5 kcal. Daí:
+     gasto de uma atividade (kcal) = MET × 3,5 × peso (kg) × minutos ÷ 200
+   Gasto do dia = metabolismo em repouso × fator da rotina fora do treino + o que o treino gastou ACIMA disso.
+   O treino entra só pelo que passa do gasto normal daqueles minutos, para não contar duas vezes o mesmo tempo. */
+const MET_CARDIO = {
+  Walking_Treadmill: [4.8, 'caminhada na esteira, 5,6 a 6,3 km/h (código 17358)'],
+  Bicycling_Stationary: [6.8, 'bicicleta ergométrica, geral (01200)'],
+  Elliptical_Trainer: [5.0, 'elíptico, esforço moderado (02048)'],
+  Jogging_Treadmill: [7.5, 'corrida leve, ritmo próprio (12020)'],
+  Stairmaster: [9.3, 'simulador de escada, geral (02065)'],
+  Rowing_Stationary: [5.0, 'remo ergométrico, moderado (02071)'],
+  Rope_Jumping: [11.0, 'pular corda, geral (02068)'],
+  Trail_Running_Walking: [6.0, 'caminhada e corrida alternadas (12010)']
+};
+const MET = { musculacao: 3.5, circuito: 5.0, calistenia: 3.8, prancha: 2.8, alongamento: 2.3, cardio: 5.0 };
+const SEG_POR_REPETICAO = 3, MIN_PREPARO_EXERCICIO = 1;
+
+function metDoExercicio(ex) {
+  if (ex.padrao === 'cardio') return (MET_CARDIO[ex.id] || [MET.cardio])[0];
+  if (ex.padrao === 'mob') return MET.alongamento;                  // 02101 alongamento leve
+  if (ex.id === 'Plank' || ex.id === 'Side_Bridge') return MET.prancha;   // 02024 prancha e abdominais, leve
+  if (ex.padrao === 'core') return MET.calistenia;                  // 02022 calistenia, moderada
+  return MET.musculacao;                                            // 02054 musculação, 8 a 15 repetições
+}
+// Média de uma faixa escrita como "8–10", "20–30 s" ou "25 min"
+const mediaFaixa = txt => { const ns = String(txt || '').replace(/,/g, '.').match(/\d+(\.\d+)?/g); return ns ? ns.slice(0, 2).map(Number).reduce((a, b) => a + b, 0) / Math.min(2, ns.length) : null; };
+// Tempo estimado de um exercício pelo que foi feito: execução + descanso de cada série + preparo
+function minutosEstimados(ex, ref, feitas, series) {
+  if (ex.padrao === 'cardio') return (mediaFaixa(ref.reps) || 20) * (feitas / (series || 1));
+  const r = String(ref.reps || ''), segExec = /\bs\b/.test(r) && !/min/.test(r) ? (mediaFaixa(r) || 30) : (mediaFaixa(r) || 10) * SEG_POR_REPETICAO;
+  return feitas * (segExec + (parseInt(ref.descanso, 10) || 0)) / 60 + MIN_PREPARO_EXERCICIO;
+}
+
+// Medição em vigor numa data: a mais recente até aquele dia (ou a primeira, para dias anteriores a todas)
+function medidaNaData(data, e) {
+  const ms = (e.medidas || []).filter(m => m.peso != null);
+  const antes = ms.filter(m => m.data <= data);
+  return antes.length ? antes[antes.length - 1] : ms[0] || null;
+}
+const pesoNaData = (data, e) => { const m = medidaNaData(data, e); return (m && m.peso) || num(e.perfil.peso); };
+// Metabolismo em repouso com os números medidos naquela data (bioimpedância, se houver; senão, fórmula pelo peso)
+function tmbNaData(data, e) {
+  const m = medidaNaData(data, e);
+  if (!m) return analisar(e.perfil, new Date(data + 'T12:00:00')).tmb;
+  const v = k => (m[k] == null ? '' : m[k]);
+  return analisar(Object.assign({}, e.perfil, { peso: m.peso, bio: { gordura: v('gordura'), tmb: v('tmb'), musculo: v('musculo'), visceral: v('visceral') } }), new Date(data + 'T12:00:00')).tmb;
+}
+const fatorRotina = e => (ROTINAS[e.perfil.rotina] || ROTINAS.sedentaria).base;
+const itemDaFicha = (exId, e) => (e.ficha ? e.ficha.dias.flatMap(d => d.itens).find(i => i.ex === exId) : null);
+
+/* Gasto de um treino concluído. Devolve { bruto, extra, minutos, partes, peso }:
+   bruto = tudo o que o corpo gastou durante o treino; extra = o que passou do gasto normal daqueles minutos. */
+function gastoDoTreino(s, e) {
+  e = e || estado;
+  const peso = pesoNaData(s.data, e), tmbMin = tmbNaData(s.data, e) / 1440, fator = fatorRotina(e);
+  const kcal = (met, min) => met * 3.5 * peso * min / 200;
+  let partes;
+  if (!(s.exs || []).length) {
+    // treino registrado antes de existir o detalhe por exercício: tempo total como musculação
+    const min = Math.min(120, Math.max(20, s.minutos || 45));
+    partes = [{ nome: 'Musculação', met: MET.musculacao, min }];
+  } else {
+    const lista = s.exs.map(x => {
+      const ex = EX_POR_ID[x.id]; if (!ex) return null;
+      const ref = x.reps != null ? x : itemDaFicha(x.id, e) || parametros(ex, 'recomposicao', 1);
+      return { ex, met: metDoExercicio(ex), est: minutosEstimados(ex, ref, x.feitas, x.series), descanso: parseInt(ref.descanso, 10) || 0 };
+    }).filter(Boolean);
+    const cardio = lista.filter(x => x.ex.padrao === 'cardio'), forca = lista.filter(x => x.ex.padrao !== 'cardio');
+    const minCardio = cardio.reduce((t, x) => t + x.est, 0), estForca = forca.reduce((t, x) => t + x.est, 0);
+    // O relógio do treino manda, dentro de limites: quem esquece o treino aberto não ganha horas de gasto,
+    // e quem marca tudo de uma vez no fim não fica com gasto zero
+    let minForca = estForca;
+    if (estForca > 0 && s.minutos) minForca = Math.min(estForca * 2, 150, Math.max(estForca * 0.7, s.minutos - minCardio));
+    // Descanso médio de até 30 s entre séries é treino em circuito (02035), mais intenso
+    const circuito = forca.length >= 4 && forca.reduce((t, x) => t + x.descanso, 0) / forca.length <= 30;
+    partes = cardio.map(x => ({ nome: x.ex.nome, met: x.met, min: x.est }))
+      .concat(forca.map(x => ({ nome: x.ex.nome, met: circuito && x.met === MET.musculacao ? MET.circuito : x.met, min: estForca ? minForca * x.est / estForca : 0 })));
+  }
+  partes.forEach(p => { p.kcal = kcal(p.met, p.min); });
+  const minutos = partes.reduce((t, p) => t + p.min, 0), bruto = partes.reduce((t, p) => t + p.kcal, 0);
+  return { bruto: Math.round(bruto), extra: Math.round(Math.max(0, bruto - fator * tmbMin * minutos)), minutos: Math.round(minutos), partes, peso };
+}
+
+// Balanço de um dia: o que comeu menos o que gastou
+function energiaDoDia(data, e) {
+  e = e || estado;
+  const tmb = tmbNaData(data, e), repouso = Math.round(tmb * fatorRotina(e));
+  const treinos = (e.sessoes || []).filter(s => s.data === data).map(s => gastoDoTreino(s, e));
+  const reg = diarioDoDia(data, e), comeu = Math.round(somaDiario(reg).kcal);
+  const treinoExtra = treinos.reduce((t, x) => t + x.extra, 0), treinoBruto = treinos.reduce((t, x) => t + x.bruto, 0);
+  const hoje = data === hojeISO(), incompleto = reg.length > 0 && comeu < tmb * 0.5;
+  const gasto = repouso + treinoExtra;
+  return { data, tmb: Math.round(tmb), repouso, treinos: treinos.length, treinoExtra, treinoBruto, comeu, temDiario: reg.length > 0, gasto, saldo: comeu - gasto, hoje, incompleto, valido: reg.length > 0 && !hoje && !incompleto };
+}
+// Médias dos últimos dias encerrados (sem contar hoje) e dos treinos
+function balancoEnergia(e, dias) {
+  e = e || estado; dias = dias || 7;
+  const hoje = hojeISO(), lista = Array.from({ length: dias }, (_, i) => energiaDoDia(dataMenos(hoje, i + 1), e));
+  const ok = lista.filter(d => d.valido), media = k => (ok.length ? Math.round(ok.reduce((t, d) => t + d[k], 0) / ok.length) : null);
+  const treinos28 = (e.sessoes || []).filter(s => s.data > dataMenos(hoje, 28) && s.data <= hoje).map(s => gastoDoTreino(s, e));
+  const treinos7 = (e.sessoes || []).filter(s => s.data > dataMenos(hoje, 7) && s.data <= hoje).map(s => gastoDoTreino(s, e));
+  const saldoMedio = media('saldo');
+  return {
+    dias: lista, validos: ok.length, comeuMedio: media('comeu'), gastoMedio: media('gasto'), saldoMedio,
+    ritmoKg: saldoMedio === null ? null : saldoMedio * 7 / 7700,
+    porTreino: treinos28.length ? Math.round(treinos28.reduce((t, x) => t + x.bruto, 0) / treinos28.length) : null, treinos28: treinos28.length,
+    treinoSemana: treinos7.reduce((t, x) => t + x.bruto, 0), treinos7: treinos7.length,
+    minutosPorTreino: treinos28.length ? Math.round(treinos28.reduce((t, x) => t + x.minutos, 0) / treinos28.length) : null
+  };
+}
+const SEMANA_CURTA = ['dom', 'seg', 'ter', 'qua', 'qui', 'sex', 'sáb'];
+const nomeDia = data => (data === hojeISO() ? 'Hoje' : data === dataMenos(hojeISO(), 1) ? 'Ontem' : SEMANA_CURTA[new Date(data + 'T12:00:00').getDay()] + ' ' + dataCurta(data));
+const comSinalKcal = v => (v === 0 ? '0' : (v > 0 ? '+' : '−') + n0(Math.abs(v)));
+
+function secaoEnergia() {
+  const e = estado, b = balancoEnergia(e, 7), hoje = hojeISO();
+  if (!(e.sessoes || []).length && !(e.diario || []).length) return `<div class="secao"><h2>Balanço de energia</h2><div class="vazio">Conclua treinos e registre o que você come em Alimentação: aqui aparece quanto cada treino gastou e o balanço de cada dia.</div></div>`;
+  const linhas = [energiaDoDia(hoje, e)].concat(b.dias);
+  const maior = Math.max(1, ...linhas.filter(d => d.temDiario && !d.hoje).map(d => Math.abs(d.saldo)));
+  const barra = d => {
+    if (!d.temDiario) return '<span class="suave">sem registro</span>';
+    if (d.hoje) return `<span class="suave">até agora ${comSinalKcal(d.saldo)}</span><br><span class="mini suave">o dia ainda não acabou</span>`;
+    const deficit = d.saldo < 0, txt = (deficit ? 'déficit ' : d.saldo > 0 ? 'superávit ' : '') + n0(Math.abs(d.saldo));
+    return `<span class="saldo-barra ${deficit ? '' : 'sobra'}"><i style="width:${Math.max(3, Math.abs(d.saldo) / maior * 100).toFixed(0)}%"></i><span>${txt}</span></span>${d.incompleto ? '<br><span class="mini texto-atencao">registro parece incompleto</span>' : ''}`;
+  };
+  const real = gastoReal(dataMenos(hoje, 27), hoje, e), b28 = balancoEnergia(e, 28);
+  const p = e.perfil, pl = planoAlimentar(p, analisar(p));
+  const tipoSaldo = s => (s === null ? '' : s < -100 ? selo('info', 'déficit') : s > 100 ? selo('info', 'superávit') : selo('info', 'equilíbrio'));
+  return `<div class="secao"><h2>Balanço de energia</h2>
+    <div class="tiles equilibrado" style="--colunas:3">
+      ${tile('Gasto por treino', b.porTreino === null ? '–' : n0(b.porTreino), b.porTreino === null ? '' : 'kcal', `<span class="mini suave">${b.treinos28 ? `média de ${b.treinos28} ${b.treinos28 === 1 ? 'treino' : 'treinos'} em 28 dias · ${b.minutosPorTreino} min` : 'conclua um treino para medir'}</span>`)}
+      ${tile('Treinos na semana', n0(b.treinoSemana), 'kcal', `<span class="mini suave">${b.treinos7} ${b.treinos7 === 1 ? 'treino' : 'treinos'} nos últimos 7 dias</span>`)}
+      ${tile('Comeu por dia', b.comeuMedio === null ? '–' : n0(b.comeuMedio), b.comeuMedio === null ? '' : 'kcal', `<span class="mini suave">${b.validos ? `média de ${b.validos} ${b.validos === 1 ? 'dia' : 'dias'} completos · meta ${n0(pl.kcal)}` : 'registre dias completos no diário'}</span>`)}
+      ${tile('Gastou por dia', b.gastoMedio === null ? '–' : n0(b.gastoMedio), b.gastoMedio === null ? '' : 'kcal', '<span class="mini suave">repouso, rotina e treinos feitos</span>')}
+      ${tile('Saldo por dia', b.saldoMedio === null ? '–' : comSinalKcal(b.saldoMedio), b.saldoMedio === null ? '' : 'kcal', tipoSaldo(b.saldoMedio))}
+      ${tile('Ritmo previsto', b.ritmoKg === null ? '–' : (Math.abs(b.ritmoKg) < 0.05 ? '0,0' : (b.ritmoKg > 0 ? '+' : '−') + n1(Math.abs(b.ritmoKg))), b.ritmoKg === null ? '' : 'kg/sem', '<span class="mini suave">pelo saldo médio dos dias completos</span>')}
+    </div>
+    <div class="card rolagem-x" style="margin-top:12px"><h3 style="margin-bottom:10px">Dia a dia</h3>
+      <table class="tabela energia so-computador"><tr><th>Dia</th><th>Comeu</th><th>Repouso e rotina</th><th>Treino</th><th>Gasto total</th><th>Saldo</th></tr>
+        ${linhas.map(d => `<tr class="${d.valido || d.hoje ? '' : 'fraco'}"><td><b>${nomeDia(d.data)}</b></td><td>${d.temDiario ? n0(d.comeu) : '–'}</td><td>${n0(d.repouso)}</td>
+          <td>${d.treinos ? `+${n0(d.treinoExtra)}<br><span class="mini suave">de ${n0(d.treinoBruto)} gastos</span>` : '–'}</td><td><b>${n0(d.gasto)}</b></td><td>${barra(d)}</td></tr>`).join('')}</table>
+      <div class="energia-lista">${linhas.map(d => `<div class="energia-dia ${d.valido || d.hoje ? '' : 'fraco'}"><div class="topo"><b>${nomeDia(d.data)}</b><span class="saldo-lado">${barra(d)}</span></div>
+        <span class="mini suave">${d.temDiario ? `comeu ${n0(d.comeu)} · ` : ''}gastou ${n0(d.gasto)} (${n0(d.repouso)} de repouso e rotina${d.treinos ? ` + ${n0(d.treinoExtra)} do treino, de ${n0(d.treinoBruto)} gastos nele` : ''})</span></div>`).join('')}</div>
+      <p class="mini suave" style="margin-top:10px">Valores em kcal. As médias usam só os dias que já acabaram e têm o diário completo; dias com menos da metade do metabolismo em repouso registrado ficam de fora, porque provavelmente faltou anotar alguma refeição.</p></div>
+    <div class="card" style="margin-top:12px"><h3 style="margin-bottom:6px">Conferência com a balança</h3>
+      ${real && b28.validos >= 7 ? `<p>Pelas fórmulas e pelos treinos feitos, você gastou em média <b>${n0(b28.gastoMedio)} kcal</b> por dia nos últimos 28 dias. Pelo que você comeu e pela variação real do peso (${real.variacaoPesoKg > 0 ? '+' : '−'}${br(Math.abs(real.variacaoPesoKg))} kg), o gasto foi de <b>${n0(real.kcal)} kcal</b>. ${Math.abs(real.kcal - b28.gastoMedio) <= 150 ? 'Os dois batem: as estimativas estão confiáveis para você.' : `A diferença de ${n0(Math.abs(real.kcal - b28.gastoMedio))} kcal por dia mostra ${real.kcal > b28.gastoMedio ? 'que você gasta mais do que as fórmulas preveem' : 'que você gasta menos do que as fórmulas preveem, ou que algumas refeições ficaram sem registro'}; o número da balança é o mais confiável.`}</p>`
+        : '<p class="suave">Com pelo menos 10 dias de diário completo e duas pesagens com 14 dias de intervalo, o site compara o gasto calculado com o gasto real, medido pela variação do seu peso. É a forma mais exata de saber quanto você gasta.</p>'}</div>
+    <details class="ver-tabela como-calculado"><summary>Como é calculado</summary><ul class="lista">
+      <li><b>Repouso e rotina:</b> metabolismo em repouso do dia (${n0(tmbNaData(hoje, e))} kcal hoje, ${analisar(p).tmbFonte}) × ${br(fatorRotina(e))}, o fator da sua rotina fora do treino (${(ROTINAS[p.rotina] || ROTINAS.sedentaria).nome.split(' (')[0].toLowerCase()}).</li>
+      <li><b>Treino:</b> cada exercício tem uma intensidade (MET) do Compendium of Physical Activities 2024: musculação ${br(MET.musculacao)}, circuito ${br(MET.circuito)}, abdominais ${br(MET.calistenia)}, prancha ${br(MET.prancha)}, alongamento ${br(MET.alongamento)}, e o cardio conforme o aparelho (caminhada na esteira ${br(MET_CARDIO.Walking_Treadmill[0])}, bicicleta ${br(MET_CARDIO.Bicycling_Stationary[0])}, corrida leve ${br(MET_CARDIO.Jogging_Treadmill[0])}…). Gasto = MET × 3,5 × peso × minutos ÷ 200, com o peso medido naquela data.</li>
+      <li><b>Tempo:</b> o cardio conta os minutos da ficha; a musculação usa o tempo entre iniciar e concluir o treino, limitado ao que as séries, as repetições e os descansos justificam.</li>
+      <li><b>Sem contar duas vezes:</b> o balanço soma só o que o treino gastou acima do gasto normal daqueles minutos, que já está em "repouso e rotina".</li>
+      <li><b>Comeu:</b> a soma do diário, pela tabela TACO/TBCA. 7.700 kcal de saldo ≈ 1 kg de peso.</li>
+      <li>Toda estimativa de gasto tem margem de erro de cerca de 10% a 20%. A conferência com a balança corrige isso com o tempo.</li></ul></details>
+  </div>`;
+}
 
 /* ───────── Ações (entram no mapa de ações de app.js) ───────── */
 const ACOES_ACOMPANHAMENTO = {
