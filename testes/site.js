@@ -230,7 +230,7 @@ const espera = ms => new Promise(r => setTimeout(r, ms));
 
   // Painel: cartões sem buraco e constância
   await js(`location.hash = '#/painel', true`); await espera(300);
-  ok(await js(`(() => { const ts = [...document.querySelectorAll('.tiles.equilibrado > .tile')], c = document.querySelector('.tiles.equilibrado').getBoundingClientRect();
+  ok(await js(`(() => { const ts = [...document.querySelector('.tiles.equilibrado').children], c = document.querySelector('.tiles.equilibrado').getBoundingClientRect();
     const linhas = {}; ts.forEach(x => { const r = x.getBoundingClientRect(); (linhas[Math.round(r.top)] = linhas[Math.round(r.top)] || []).push(r); });
     return ts.length === 7 && Object.values(linhas).every(l => Math.abs(l[l.length - 1].right - c.right) < 2 && Math.abs(l[0].left - c.left) < 2) && Object.values(linhas).map(l => l.length).join() === '4,3'; })()`), 'os 7 cartões de números ocupam as linhas inteiras (4 + 3), sem buraco');
   ok(/Sua constância/.test(await texto('#conteudo')) && (await js('!!document.querySelector(".anel") && !!document.querySelector(".calendario") && !!document.querySelector(".grafico .barra")')), 'painel mostra a constância: anel da semana, barras por semana e calendário');
@@ -361,7 +361,7 @@ const espera = ms => new Promise(r => setTimeout(r, ms));
     await foto('cel-' + r);
   }
   await js(`location.hash = '#/painel', true`); await espera(300);
-  ok(await js(`(() => { const ts = [...document.querySelectorAll('.tiles.equilibrado > .tile')], c = document.querySelector('.tiles.equilibrado').getBoundingClientRect();
+  ok(await js(`(() => { const ts = [...document.querySelector('.tiles.equilibrado').children], c = document.querySelector('.tiles.equilibrado').getBoundingClientRect();
     const linhas = {}; ts.forEach(x => { const r = x.getBoundingClientRect(); (linhas[Math.round(r.top)] = linhas[Math.round(r.top)] || []).push(r); });
     return Object.values(linhas).every(l => Math.abs(l[l.length - 1].right - c.right) < 2) && Object.values(linhas).map(l => l.length).join() === '2,2,2,1'; })()`), 'celular: cartões de números em pares, sem buraco');
   ok(await js(`[...document.querySelectorAll('.lateral .nav-item > span')].every(s => s.scrollWidth <= s.clientWidth + 1)`), 'celular: os 5 rótulos do menu cabem inteiros, sem corte');
