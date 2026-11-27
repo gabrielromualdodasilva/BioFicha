@@ -7,7 +7,7 @@ Scripts em Node (sem dependências) que abrem o site num navegador sem janela, p
 | Arquivo | O que confere | Precisa de internet |
 |---|---|---|
 | `calculos.js` | Faixas de referência (gordura, músculo, gordura abdominal), objetivo recomendado e plano alimentar | Não |
-| `site.js` | O site inteiro aberto como arquivo: cadastro, ficha, treino, cargas, diário, análise da semana, reestruturação, constância, telas no celular | Só para a fonte |
+| `site.js` | O site inteiro aberto como arquivo: cadastro, avatar (montador, humor, balão e palco), ficha, treino, cargas, diário, análise da semana, reestruturação, constância, telas no celular | Só para a fonte |
 | `nuvem.js` | Login, convites, papéis (administrador, profissional, aluno), regras do banco, anotações, troca de senha e exclusão de conta, no projeto real do Firebase | Sim |
 | `servidor.js` | Servidor local usado por `nuvem.js` | |
 | `contas-teste.js` | Gera contas descartáveis para `nuvem.js` | |

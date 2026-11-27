@@ -55,7 +55,10 @@ const espera = ms => new Promise(r => setTimeout(r, ms));
     if (await js(`!!document.querySelector('#aceite')`)) await clicar('#aceite');
     for (let i = 0; i < 4; i++) await clicar('[data-acao="passo"][data-valor="1"]');
     await espera(400);
-    return (await texto('h1')).includes('Olá, ' + nome.split(' ')[0]) && await ate('!nuvem.timer && !nuvem.pendente');
+    // depois do primeiro cadastro vem "Monte seu avatar"; salva o avatar sorteado e segue para o painel
+    if ((await texto('h1')) !== 'Monte seu avatar') return false;
+    await clicar('.salvar-avatar-fim [data-acao="salvar-avatar"]'); await espera(400);
+    return (await texto('h1')).includes('Olá, ' + nome.split(' ')[0]) && (await js('!!(estado.perfil && estado.perfil.avatar)')) && await ate('!nuvem.timer && !nuvem.pendente');
   };
 
   await cmd('Runtime.enable'); await cmd('Page.enable');

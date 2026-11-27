@@ -81,7 +81,9 @@ const IC = {
   cima: 'M6 14l6-6 6 6', baixo: 'M6 10l6 6 6-6', lixo: 'M5 7h14M10 7V4h4v3M7 7l1 13h8l1-13', play: 'M8 5l11 7-11 7z',
   video: 'M4 6h11v12H4zM15 10l5-3v10l-5-3', alerta: 'M12 4l9 16H3zM12 10v4M12 17v.5',
   info: 'M12 21a9 9 0 1 0 0-18 9 9 0 0 0 0 18zM12 11v5M12 8v.5', imprimir: 'M7 8V4h10v4M7 17H5V9h14v8h-2M7 14h10v6H7z',
-  raio: 'M13 3L5 13h6l-1 8 8-10h-6z', estrela: 'M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1 5.9L12 16.9l-5.2 2.8 1-5.9-4.3-4.1 5.9-.8z'
+  editar: 'M4 20h4L19 9l-4-4L4 16zM14 6l4 4', ampliar: 'M4 9V4h5M20 9V4h-5M4 15v5h5M20 15v5h-5', dado: 'M5 5h14v14H5zM9 9h.01M15 9h.01M12 12h.01M9 15h.01M15 15h.01',
+  som: 'M4 9v6h4l5 4V5L8 9zM16 9a4 4 0 0 1 0 6M18.5 6.5a8 8 0 0 1 0 11', mudo: 'M4 9v6h4l5 4V5L8 9zM17 9l5 6M22 9l-5 6',
+  raio: 'M13 3L5 13h6l-1 8 8-10h-6z', estrela:'M12 3.5l2.6 5.4 5.9.8-4.3 4.1 1 5.9L12 16.9l-5.2 2.8 1-5.9-4.3-4.1 5.9-.8z'
 };
 const ic = (nome, cls) => `<svg class="ic ${cls || ''}" viewBox="0 0 24 24" aria-hidden="true"><path d="${IC[nome]}"/></svg>`;
 
@@ -111,7 +113,8 @@ function dadosDemo() {
   const perfil = {
     nome: 'Visitante', sexo: 'M', nascimento: '1994-05-10', altura: 178, peso: 88.4, objetivo: 'auto', nivel: 1, dias: 4,
     rotina: 'sedentaria', enfase: 'equilibrado', equip: TODOS_EQUIP.slice(), restricoes: [], dieta: 'tradicional', refeicoes: 4,
-    bio: { gordura: 25.6, visceral: 10, musculo: 35.8, tmb: 1845 }
+    bio: { gordura: 25.6, visceral: 10, musculo: 35.8, tmb: 1845 },
+    avatar: AVATAR.normalizar({ tipo: 'masculino', pele: 2, cabelo: 'cacheado', corCabelo: 1, olhos: 'redondos', boca: 'sorriso', roupa: 'moletom', corRoupa: 1, fundo: 3, acessorio: 'redondo', barba: 'rala' })
   };
   const medidas = [
     { data: '2026-08-20', peso: 92.0, gordura: 27.5, visceral: 11, musculo: 34.6, tmb: 1880 },
@@ -161,8 +164,10 @@ function diarioDemo() {
 const ROTAS = [
   ['painel', 'Painel'], ['ficha', 'Minha ficha'], ['alimentacao', 'Alimentação'], ['evolucao', 'Evolução'], ['perfil', 'Perfil']
 ];
-// Fora do menu: "exercicios" é uma aba de Minha ficha (e atalho no Perfil); "pessoas" é só do administrador, pelo Perfil
-const rotaAtual = () => { const r = location.hash.replace(/^#\/?/, ''); return ROTAS.some(x => x[0] === r) || r === 'exercicios' || (r === 'pessoas' && podeGerenciar()) ? r : 'painel'; };
+// Fora do menu: "exercicios" é uma aba de Minha ficha (e atalho no Perfil); "avatar" abre pelo avatar do canto da tela e pelo Perfil;
+// "pessoas" é só do administrador, pelo Perfil
+const rotaAtual = () => { const r = location.hash.replace(/^#\/?/, ''); return ROTAS.some(x => x[0] === r) || r === 'exercicios' || r === 'avatar' || (r === 'pessoas' && podeGerenciar()) ? r : 'painel'; };
+const TITULOS = { painel: 'Painel', ficha: 'Minha ficha', exercicios: 'Exercícios', alimentacao: 'Alimentação', evolucao: 'Evolução', perfil: 'Perfil', pessoas: 'Pessoas', avatar: 'Seu avatar' };
 const subabasFicha = ativa => `<div class="subabas" role="tablist" aria-label="Minha ficha">
     <a class="subaba ${ativa === 'ficha' ? 'ativo' : ''}" href="#/ficha" role="tab" aria-selected="${ativa === 'ficha'}">Meus treinos</a>
     <a class="subaba ${ativa === 'exercicios' ? 'ativo' : ''}" href="#/exercicios" role="tab" aria-selected="${ativa === 'exercicios'}">Todos os exercícios <span class="conta">${EXERCICIOS.length}</span></a></div>`;
@@ -186,19 +191,35 @@ function render() {
     return;
   }
   app.className = 'app';
+  const humor = humorAtual(), eu = estado.perfil;
   app.innerHTML = `
+    <header class="topo-movel">
+      <a class="logo-marca" href="#/painel" aria-label="Painel">${ic('exercicios')}</a>
+      <span class="topo-titulo">${TITULOS[rota]}</span>
+      <a class="topo-avatar" href="#/avatar" aria-label="Editar seu avatar">${meuAvatar(36, { vivo: true, humor })}<span class="lapis" aria-hidden="true">${ic('editar')}</span></a>
+    </header>
     <nav class="lateral" aria-label="Seções">
       <div class="logo"><span class="logo-marca">${ic('exercicios')}</span>BioFicha</div>
-      ${ROTAS.map(([r, nome]) => `<a class="nav-item ${r === rota || (r === 'perfil' && rota === 'pessoas') || (r === 'ficha' && rota === 'exercicios') ? 'ativo' : ''}" href="#/${r}">${ic(r)}<span>${r === 'ficha' ? '<span class="so-largo">Minha </span>ficha' : nome}</span></a>`).join('')}
-      <div class="rodape mini suave" id="situacao">${DEMO ? 'Modo demonstração: dados de exemplo.' : NUVEM ? textoSituacao() : 'Seus dados ficam salvos só neste navegador.'}</div>
+      ${ROTAS.map(([r, nome]) => `<a class="nav-item ${r === rota || (r === 'perfil' && (rota === 'pessoas' || rota === 'avatar')) || (r === 'ficha' && rota === 'exercicios') ? 'ativo' : ''}" href="#/${r}">${ic(r)}<span>${r === 'ficha' ? '<span class="so-largo">Minha </span>ficha' : nome}</span></a>`).join('')}
+      <div class="rodape">
+        <a class="eu ${rota === 'avatar' ? 'ativo' : ''}" href="#/avatar">${meuAvatar(40, { vivo: true, humor })}
+          <span><b>${esc(eu.nome || 'Seu avatar')}</b><small>${eu.avatar ? esc(rotuloPapel()) : 'Toque para montar'}</small></span><span class="eu-editar" title="Editar avatar">${ic('editar', 'p')}</span></a>
+        <div class="mini suave situacao" id="situacao">${DEMO ? 'Modo demonstração: dados de exemplo.' : NUVEM ? textoSituacao() : 'Seus dados ficam salvos só neste navegador.'}</div>
+      </div>
     </nav>
     <main class="conteudo" id="conteudo">${DEMO ? faixaDemo() : ''}${VIEWS[rota]()}</main>`;
+  depoisDeDesenhar();
 }
 // No exemplo (?demo), deixa claro em toda tela que os dados são inventados, para ninguém confundir com a própria conta
 const faixaDemo = () => `<div class="faixa-demo" role="note">${ic('info')}
     <div><b>Exemplo com dados inventados.</b> Estes treinos, refeições e medidas são de um visitante fictício, não seus.</div>
     <a class="btn" href="${esc(location.pathname)}">Abrir minha conta</a></div>`;
-window.addEventListener('hashchange', () => { if (rotaAtual() === 'pessoas') { ui.convites = undefined; ui.usuarios = undefined; } render(); window.scrollTo(0, 0); });
+window.addEventListener('hashchange', () => {
+  if (rotaAtual() === 'pessoas') { ui.convites = undefined; ui.usuarios = undefined; }
+  if (rotaAtual() !== 'avatar') { ui.rascunhoAvatar = null; ui.humorPrevia = null; ui.boasVindas = false; }   // sair do avatar sem salvar descarta o rascunho
+  fecharPalco();
+  render(); window.scrollTo(0, 0);
+});
 
 /* ───────── Nuvem: conta e dados no Firebase (Auth + Firestore) ─────────
    Cada pessoa tem um único documento, usuarios/<id da conta>, com o mesmo conteúdo que o modo local guarda no navegador.
@@ -424,6 +445,7 @@ function viewEntrada() {
     recuperar: 'Digite o e-mail do seu convite. Você recebe um link para criar ou trocar a senha (olhe também a caixa de spam).'
   }[modo];
   return `<div class="cadastro conta">${logo}
+    ${modo === 'entrar' ? trioDeAvatares() : ''}
     <h1>${titulo}</h1><p class="suave">${texto}</p>
     <form id="form-conta" class="pilha" novalidate>
       <label class="campo"><span>E-mail</span><input class="entrada" id="c-email" type="email" inputmode="email" autocomplete="email" value="${esc(nuvem.email || '')}" placeholder="voce@exemplo.com"></label>
@@ -521,7 +543,7 @@ function secaoUsuarios() {
   const rs = todos.filter(x => !ui.soAtencao || (x.r.alertas.length && !x.r.removido)).sort((a, b) => (b.r.alertas.length ? 1 : 0) - (a.r.alertas.length ? 1 : 0) || (b.u.atualizadoEm || 0) - (a.u.atualizadoEm || 0));
   const ativos = todos.filter(x => !x.r.parado).length, emDia = todos.filter(x => x.r.meta && x.r.treinos7 >= x.r.meta).length, medidos = todos.filter(x => x.r.diasMedida !== null && x.r.diasMedida < 8).length;
   const linhas = rs.map(({ u, r }) => `<tr>
-      <td><b>${esc(r.nome || r.email || 'Sem nome')}</b>${r.nome && r.email ? `<br><span class="suave mini">${esc(r.email)}</span>` : ''}${u.uid === nuvem.usuario.uid ? ' ' + selo('info', 'Você') : ''}${r.removido ? ' ' + selo('alerta', 'Acesso removido') : ''}${r.removido ? '' : r.alertas.map(t => '<br>' + selo('atencao', t)).join('')}</td>
+      <td><div class="pessoa-celula">${avatarDeUsuario(u, 42, { vivo: !r.removido, humor: humorDoTreino(u) })}<div><b>${esc(r.nome || r.email || 'Sem nome')}</b>${r.nome && r.email ? `<br><span class="suave mini">${esc(r.email)}</span>` : ''}${u.uid === nuvem.usuario.uid ? ' ' + selo('info', 'Você') : ''}${r.removido ? ' ' + selo('alerta', 'Acesso removido') : ''}${r.removido ? '' : r.alertas.map(t => '<br>' + selo('atencao', t)).join('')}</div></div></td>
       <td>${selo(r.parado ? 'atencao' : 'bom', r.atividade)}</td>
       <td>${r.treinos7} de ${r.meta || '–'}<br><span class="suave mini">${r.treinos28} em 28 dias</span></td>
       <td>${r.ultima ? `${n1(r.ultima.peso)} kg${r.ultima.gordura != null ? ' · ' + n1(r.ultima.gordura) + '%' : ''}<br><span class="mini ${r.diasMedida >= 8 ? 'texto-atencao' : 'suave'}">${r.diasMedida === 0 ? 'hoje' : r.diasMedida === 1 ? 'ontem' : 'há ' + r.diasMedida + ' dias'}</span>` : '–'}</td>
@@ -548,7 +570,9 @@ function modalUsuario(uid) {
     const ds = Object.keys(porDia); return ds.length ? { dias: ds.length, kcal: Math.round(ds.reduce((t, d) => t + porDia[d], 0) / ds.length) } : null;
   })();
   const semana = analiseDaSemana(u);
+  const humorU = humorDoTreino(u);
   abrirModal(`${topoModal(esc(r.nome || r.email || 'Usuário'))}<div class="miolo solto">
+    <div class="pessoa-topo">${avatarDeUsuario(u, 64, { vivo: true, humor: humorU })}<span class="pequeno">${{ feliz: 'Em dia com os treinos', neutro: u.sessoes && u.sessoes.length ? 'Um pouco atrás da meta da semana' : 'Ainda não treinou', triste: '7 dias ou mais sem treinar' }[humorU]}${u.perfil && u.perfil.avatar ? '' : '<br><span class="mini suave">Ainda não montou o avatar</span>'}</span></div>
     <p class="suave pequeno">${esc(r.email)}${r.email ? ' · ' : ''}${a.idade} anos · ${n0(a.alturaCm)} cm · objetivo: ${OBJETIVOS[a.objetivo].nome.toLowerCase()} · ${NIVEIS[p.nivel].toLowerCase()} · último uso ${r.atividade}</p>
     ${r.alertas.length && !r.removido ? `<p style="margin-top:10px">${r.alertas.map(t => selo('atencao', t)).join(' ')}</p>` : ''}
     ${blocoNota(uid)}
@@ -836,6 +860,8 @@ function concluirCadastro() {
   }
   ui.editando = false; ui.rascunho = null; ui.passo = 1; ui.dia = null;
   salvar();
+  // Primeiro cadastro: antes do painel, a pessoa monta o avatar (boas-vindas)
+  if (!antigo && !r.avatar) { ui.rascunhoAvatar = null; ui.boasVindas = true; location.hash = '#/avatar'; render(); window.scrollTo(0, 0); toast('Plano montado! Agora monte seu avatar.'); return; }
   location.hash = '#/painel';
   render(); window.scrollTo(0, 0);
   toast(antigo ? 'Cadastro atualizado.' : 'Plano montado. Bom treino!');
@@ -883,6 +909,7 @@ function viewPainel() {
       <p class="suave">${a.idade} anos · ${n0(a.alturaCm)} cm · ${n1(a.peso)} kg · objetivo: ${OBJETIVOS[a.objetivo].nome.toLowerCase()}</p></div>
       <div class="acoes"><a class="btn" href="#/evolucao">${ic('mais', 'p')}Nova medição</a></div></div>
     ${cartaoConsentimento()}
+    ${heroiSemana()}
     <div class="tres">
       <div class="card destaque">
         <p class="pequeno suave">${escolhido && escolhido !== a.objetivoRecomendado ? 'Recomendação pelos seus números' : 'Seu plano'}</p>
@@ -1281,6 +1308,7 @@ function viewPerfil() {
         ${linha('Nível', NIVEIS[p.nivel])}${linha('Treinos por semana', p.dias)}
         ${linha('Equipamentos', lista(p.equip, EQUIPAMENTOS, 'Só peso do corpo'))}${linha('Cuidados', lista(p.restricoes, RESTRICOES, 'Nenhum'))}</table></div>
       <div class="pilha">
+        ${cartaoAvatar()}
         ${NUVEM ? `<div class="card"><h2>Conta</h2><p class="suave pequeno quebra-email">Conectado como <b>${esc(emailConta())}</b>. Seus dados ficam guardados na sua conta e aparecem em qualquer aparelho em que você entrar.${ehAdmin() ? '' : ' Quem convidou você e o administrador do BioFicha acompanham o seu progresso: medições, treinos e alimentação.'} <button class="link" data-acao="ver-privacidade">Privacidade e uso dos dados</button></p>
           <div class="acoes" style="margin-top:12px"><button class="btn" data-acao="trocar-senha">Trocar senha</button><button class="btn" data-acao="sair">Sair</button>${ehAdmin() ? '' : '<button class="btn perigo" data-acao="excluir-conta">Excluir conta</button>'}</div></div>` : ''}
         ${cartaoInstalar()}
@@ -1300,7 +1328,7 @@ function viewPerfil() {
     </div>`;
 }
 
-const VIEWS = { painel: viewPainel, ficha: viewFicha, exercicios: viewExercicios, alimentacao: viewAlimentacao, evolucao: viewEvolucao, perfil: viewPerfil, pessoas: viewPessoas };
+const VIEWS = { painel: viewPainel, ficha: viewFicha, exercicios: viewExercicios, alimentacao: viewAlimentacao, evolucao: viewEvolucao, perfil: viewPerfil, pessoas: viewPessoas, avatar: viewAvatar };
 
 /* ───────── Cronômetro de descanso ───────── */
 const crono = { fim: 0, id: null };
@@ -1534,7 +1562,7 @@ const ACOES = {
   'crono-pular'() { pararDescanso(); }
 };
 
-Object.assign(ACOES, ACOES_ACOMPANHAMENTO, ACOES_CONTA);
+Object.assign(ACOES, ACOES_ACOMPANHAMENTO, ACOES_CONTA, ACOES_AVATAR);
 
 function atualizarGrade() { const g = $('#grade'); if (g) g.innerHTML = gradeExercicios(); else render(); }
 
